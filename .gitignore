@@ -1,0 +1,37 @@
+# Dependencies
+**/node_modules/
+**/dist/
+**/build/
+**/.next/
+**/out/
+
+# Environment Variables
+**/.env
+**/.env.local
+**/.env.development.local
+**/.env.test.local
+**/.env.production.local
+
+# Logs
+**/*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Misc
+**/*.tsbuildinfo
+**/next-env.d.ts
+
+# WhatsApp Web session
+**/.wwebjs_auth/
+**/.wwebjs_cache/
+
+# Zip & Backup files
+mongo.zip
+*.zip
+backend/backup/

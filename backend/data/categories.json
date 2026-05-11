@@ -1,0 +1,49 @@
+[
+  {
+    "_id": "cat_1",
+    "name": "Bakery",
+    "color": "#f59e0b"
+  },
+  {
+    "_id": "cat_2",
+    "name": "Beverages",
+    "color": "#3b82f6"
+  },
+  {
+    "_id": "cat_3",
+    "name": "Snacks",
+    "color": "#10b981"
+  },
+  {
+    "_id": "cat_4",
+    "name": "Dairy",
+    "color": "#8b5cf6"
+  },
+  {
+    "_id": "local_1777013140675",
+    "name": "milk",
+    "company": "60d5ecb8b392d7001f8e4e11",
+    "createdAt": "2026-04-24T06:45:40.675Z",
+    "_needsSync": true
+  },
+  {
+    "_id": "local_1777014121661",
+    "name": "jam cake",
+    "company": "60d5ecb8b392d7001f8e4e11",
+    "createdAt": "2026-04-24T07:02:01.661Z"
+  },
+  {
+    "_id": "local_1777014399739",
+    "name": "Bakeyy",
+    "company": "60d5ecb8b392d7001f8e4e11",
+    "createdAt": "2026-04-24T07:06:39.739Z",
+    "_needsSync": true
+  },
+  {
+    "_id": "local_1777014717012",
+    "name": "Updated",
+    "company": "60d5ecb8b392d7001f8e4e11",
+    "createdAt": "2026-04-24T07:11:57.012Z",
+    "_needsSync": true
+  }
+]
