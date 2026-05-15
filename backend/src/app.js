@@ -99,6 +99,7 @@ app.use('/api/attendance', require('./routes/attendance'));
 app.use('/api/salary', require('./routes/salary'));
 app.use('/api/leave', require('./routes/leave'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/api/tts',   require('./routes/tts'));
 
 // 404 handler
 app.use((req, res) => res.status(404).json({ success: false, message: `Route ${req.originalUrl} not found` }));

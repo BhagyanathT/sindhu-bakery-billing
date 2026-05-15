@@ -302,6 +302,41 @@ function speakWithBrowser(job: SpeechJob): Promise<void> {
   });
 }
 
+// ─── Provider: Backend TTS Proxy (Google Translate via server — no CORS) ──────
+
+function speakWithBackendProxy(job: SpeechJob): Promise<void> {
+  return new Promise((resolve) => {
+    let resolved = false;
+    const safeResolve = () => { if (!resolved) { resolved = true; resolve(); } };
+
+    try {
+      const cleanText = job.text.replace(/<[^>]+>/g, '').trim();
+      if (!cleanText) return safeResolve();
+
+      const backendBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const url = `${backendBase}/api/tts?text=${encodeURIComponent(cleanText)}&lang=ml`;
+
+      const audio = new Audio(url);
+      audio.volume = Math.max(0, Math.min(1, job.opts.volume ?? 1));
+
+      audio.oncanplaythrough = () => { audio.play().catch(safeResolve); };
+      audio.onended  = safeResolve;
+      audio.onerror  = () => {
+        console.warn('[Voice] Backend proxy failed, falling back to browser TTS');
+        // Fall back to browser TTS
+        speakWithBrowser(job).then(safeResolve);
+      };
+
+      audio.load();
+
+      // Safety timeout 10s
+      setTimeout(safeResolve, 10000);
+    } catch {
+      safeResolve();
+    }
+  });
+}
+
 // ─── Provider: Google Cloud WaveNet ──────────────────────────────────────────
 
 async function speakWithGoogle(job: SpeechJob, googleOpts: GoogleTTSOptions): Promise<boolean> {
@@ -357,8 +392,9 @@ async function processQueue() {
   }
 
   if (!usedGoogle) {
+    // Use backend proxy (Google Translate TTS via server — no CORS)
     notifyListeners({ text: job.text, provider: 'browser' });
-    await speakWithBrowser(job);
+    await speakWithBackendProxy(job);
   }
 
   notifyListeners({ text: null, provider: null });
