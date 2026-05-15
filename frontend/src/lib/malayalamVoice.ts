@@ -77,7 +77,6 @@ export function amountToMalayalam(n: number): string {
     if (rest === 0) {
       parts.push(HUNDREDS[h]);
     } else {
-      // e.g. 540 → "അഞ്ഞൂറ്റി നാൽപ്പത്"
       parts.push(HUNDREDS[h] + 'ടി');
     }
   }
@@ -116,76 +115,126 @@ interface SpeechJob {
 
 let queue: SpeechJob[] = [];
 let speaking = false;
+let safetyTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Callbacks for status widgets
 const listeners = new Set<(text: string | null) => void>();
 export function onSpeechChange(cb: (text: string | null) => void) {
   listeners.add(cb);
-  return () => listeners.delete(cb);
+  return () => { listeners.delete(cb); };
 }
 function notifyListeners(text: string | null) {
   listeners.forEach(cb => cb(text));
 }
 
+/** Pick the best available voice — prefers Malayalam, falls back to any voice */
+function pickVoice(voiceURI?: string | null): SpeechSynthesisVoice | null {
+  const voices = window.speechSynthesis.getVoices();
+  if (voices.length === 0) return null;
+
+  // 1. User-selected voice URI
+  if (voiceURI) {
+    const v = voices.find(v => v.voiceURI === voiceURI);
+    if (v) return v;
+  }
+  // 2. Exact Malayalam locale
+  const mlExact = voices.find(v => v.lang === 'ml-IN');
+  if (mlExact) return mlExact;
+
+  // 3. Any Malayalam variant
+  const mlAny = voices.find(v => v.lang.startsWith('ml'));
+  if (mlAny) return mlAny;
+
+  // 4. Fallback — any Indian English / Hindi / system default
+  //    (Text is Malayalam script but at least audio plays)
+  const hiIn = voices.find(v => v.lang === 'hi-IN');
+  const enIn = voices.find(v => v.lang === 'en-IN');
+  const def  = voices.find(v => v.default);
+  return hiIn || enIn || def || voices[0] || null;
+}
+
+/** Actually create and speak one utterance */
+function doSpeak(job: SpeechJob) {
+  const synth = window.speechSynthesis;
+  const utt   = new SpeechSynthesisUtterance(job.text);
+
+  const voice = pickVoice(job.voiceURI);
+  if (voice) {
+    utt.voice = voice;
+    utt.lang  = voice.lang;
+  } else {
+    utt.lang = 'ml-IN';
+  }
+
+  utt.volume = Math.max(0, Math.min(1, job.volume));
+  utt.rate   = Math.max(0.5, Math.min(1.5, job.rate));
+  utt.pitch  = 1.0;
+
+  // Notify UI that speech started
+  notifyListeners(job.text);
+
+  const finish = () => {
+    if (safetyTimer) { clearTimeout(safetyTimer); safetyTimer = null; }
+    speaking = false;
+    notifyListeners(null);
+    // Small gap between utterances for natural rhythm
+    setTimeout(processQueue, 150);
+  };
+
+  utt.onend   = finish;
+  utt.onerror = (e) => {
+    console.warn('[Voice] SpeechSynthesis error:', e.error, '| text:', job.text);
+    finish();
+  };
+
+  // Safety watchdog: if onend never fires (known Chrome bug), reset after timeout
+  const watchdogMs = Math.max(4000, job.text.length * 150);
+  safetyTimer = setTimeout(() => {
+    console.warn('[Voice] Watchdog reset — onend never fired');
+    finish();
+  }, watchdogMs);
+
+  // ✅ No synth.cancel() here — that was breaking the utterance chain
+  synth.speak(utt);
+}
+
+/** Process the next job in the queue */
 function processQueue() {
   if (speaking || queue.length === 0) return;
   const job = queue.shift()!;
-  speaking = true;
-  notifyListeners(job.text);
+  speaking  = true;
 
-  const synth = window.speechSynthesis;
-  const utt = new SpeechSynthesisUtterance(job.text);
-
-  // Try to find a Malayalam voice
+  const synth  = window.speechSynthesis;
   const voices = synth.getVoices();
-  let voice: SpeechSynthesisVoice | null = null;
 
-  if (job.voiceURI) {
-    voice = voices.find(v => v.voiceURI === job.voiceURI) || null;
+  if (voices.length > 0) {
+    // Voices already loaded — speak immediately
+    doSpeak(job);
+  } else {
+    // Chrome first-load: voices not ready yet — wait for voiceschanged
+    let handled = false;
+    const onVoicesReady = () => {
+      if (handled) return;
+      handled = true;
+      synth.removeEventListener('voiceschanged', onVoicesReady);
+      doSpeak(job);
+    };
+    synth.addEventListener('voiceschanged', onVoicesReady);
+    // Fallback: if event never fires within 2s, speak anyway
+    setTimeout(onVoicesReady, 2000);
   }
-  if (!voice) {
-    // Try Malayalam voices first
-    voice =
-      voices.find(v => v.lang === 'ml-IN') ||
-      voices.find(v => v.lang.startsWith('ml')) ||
-      null;
-  }
-  if (voice) utt.voice = voice;
-
-  // For Malayalam text, use ml-IN lang hint so browser renders correctly
-  utt.lang = voice?.lang || 'ml-IN';
-  utt.volume = Math.max(0, Math.min(1, job.volume));
-  utt.rate = Math.max(0.5, Math.min(1.5, job.rate));
-  utt.pitch = 1.1; // slightly higher for female-like voice
-
-  utt.onend = () => {
-    speaking = false;
-    notifyListeners(null);
-    processQueue();
-  };
-  utt.onerror = () => {
-    speaking = false;
-    notifyListeners(null);
-    processQueue();
-  };
-
-  // Chrome bug: long text can get cut off; cancel first to be safe
-  synth.cancel();
-  setTimeout(() => {
-    synth.speak(utt);
-  }, 80);
 }
 
-/** Enqueue a speech utterance. Max queue depth = 8. */
+/** Enqueue a speech utterance. Max queue depth = 10. */
 export function speak(text: string, opts: Partial<SpeechJob> = {}) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-  if (queue.length >= 8) return; // drop if too backed up
+  if (queue.length >= 10) return; // drop if too backed up
 
   queue.push({
     text,
     voiceURI: opts.voiceURI ?? null,
-    volume: opts.volume ?? 1,
-    rate: opts.rate ?? 0.85,
+    volume:   opts.volume   ?? 1,
+    rate:     opts.rate     ?? 0.85,
   });
   processQueue();
 }
@@ -193,7 +242,8 @@ export function speak(text: string, opts: Partial<SpeechJob> = {}) {
 /** Cancel all pending speech immediately */
 export function stopSpeech() {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-  queue = [];
+  if (safetyTimer) { clearTimeout(safetyTimer); safetyTimer = null; }
+  queue    = [];
   speaking = false;
   window.speechSynthesis.cancel();
   notifyListeners(null);
@@ -207,9 +257,9 @@ export interface VoiceOptions {
   voiceURI?: string | null;
 }
 
-/** "ബിൽ വിജയകരമായി തയ്യാറാക്കി" */
+/** "ബിൽ തയ്യാറായി" */
 export function announceBillGenerated(opts: VoiceOptions = {}) {
-  speak('ബിൽ വിജയകരമായി തയ്യാറാക്കി', opts);
+  speak('ബിൽ തയ്യാറായി', opts);
 }
 
 /** "ആകെ തുക [amount] രൂപ" */
@@ -256,7 +306,7 @@ export function announceFullBill(params: {
   announceThankYou(opts);
 }
 
-/** Flash bill short announcement — just total + payment + thank you */
+/** Flash bill short announcement — total + payment + thank you */
 export function announceFlashBill(params: {
   amount: number;
   paymentMethod: string;

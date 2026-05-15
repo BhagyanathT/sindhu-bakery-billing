@@ -142,6 +142,9 @@ export default function BillingPage() {
   const searchRef = useRef<HTMLInputElement>(null);
   const [mobileView, setMobileView] = useState<'products' | 'cart'>('products');
 
+  // 🔊 Voice settings — must be declared before handleSave
+  const voiceSettings = useVoiceSettings();
+
   // ── Barcode Scanner ────────────────────────────────────────────────────────
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannerError, setScannerError] = useState('');
@@ -521,7 +524,7 @@ export default function BillingPage() {
     return { label: String(p.stock.current), cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' };
   };
 
-  const voiceSettings = useVoiceSettings();
+  // voiceSettings is declared earlier (above handleSave) — see top of component
 
   return (
     <>
