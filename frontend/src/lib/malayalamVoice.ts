@@ -1,10 +1,8 @@
 // src/lib/malayalamVoice.ts
-// ═══════════════════════════════════════════════════════════════════
-//  Sindhu Bakery POS — Hybrid Malayalam Neural TTS Engine v3.0
-//  Primary  : Google Cloud WaveNet (ml-IN-Wavenet-A — Female)
-//  Fallback : Web Speech API (browser built-in)
-//  Goal     : Sound exactly like a real Kerala supermarket POS
-// ═══════════════════════════════════════════════════════════════════
+// Sindhu Bakery POS — Malayalam TTS Engine v4.0
+// Primary  : Google Cloud WaveNet (ml-IN-Wavenet-A)
+// Fallback : Web Speech API (browser built-in) — RELIABLE
+// Style    : Natural Kerala supermarket speech
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -15,8 +13,6 @@ import {
   type GoogleTTSOptions,
 } from './googleCloudTTS';
 
-// ─── Settings import (lazy to avoid circular deps) ────────────────────────────
-// We read voiceSettings via a getter callback set by the hook
 let _getSettings: (() => VoiceOptions & { googleApiKey?: string; ttsProvider?: string; pitch?: number }) | null = null;
 export function registerSettingsGetter(
   fn: () => VoiceOptions & { googleApiKey?: string; ttsProvider?: string; pitch?: number }
@@ -70,6 +66,11 @@ const HUNDREDS: string[] = [
   'അറുനൂറ്', 'എഴുനൂറ്', 'എണ്ണൂറ്', 'തൊള്ളായിരം',
 ];
 
+const HUNDREDS_PREFIX: string[] = [
+  '', 'നൂറ്റി', 'ഇരുനൂറ്റി', 'മുന്നൂറ്റി', 'നാനൂറ്റി', 'അഞ്ഞൂറ്റി',
+  'അറുനൂറ്റി', 'എഴുനൂറ്റി', 'എണ്ണൂറ്റി', 'തൊള്ളായിരത്തി',
+];
+
 function twoDigits(n: number): string {
   if (n <= 0) return '';
   if (n < 20) return ONES[n];
@@ -77,48 +78,70 @@ function twoDigits(n: number): string {
   return TENS_ONE[n] || (TENS[Math.floor(n / 10)] + ' ' + ONES[n % 10]);
 }
 
-/** Convert integer 0–99,999 to natural Malayalam words */
-export function amountToMalayalam(n: number): string {
+export function amountToMalayalam(n: number, asAdjective = false): string {
+  if (n === null || n === undefined || isNaN(n)) return '';
   const amount = Math.round(n);
   if (amount === 0) return 'പൂജ്യം';
-  if (amount < 0) return 'മൈനസ് ' + amountToMalayalam(-amount);
+  if (amount < 0) return 'മൈനസ് ' + amountToMalayalam(-amount, asAdjective);
+
+  if (asAdjective && amount === 1) return 'ഒരു';
+  if (asAdjective && amount === 2) return 'രണ്ടു';
 
   const parts: string[] = [];
+  const rem = amount % 1000;
 
-  if (amount >= 10000) {
-    const ten_thousands = Math.floor(amount / 10000);
-    parts.push(twoDigits(ten_thousands) + ' പതിനായിരം');
-  } else if (amount >= 1000) {
-    const thousands = Math.floor(amount / 1000);
-    if (thousands === 1) parts.push('ഒരു ആയിരം');
-    else parts.push(twoDigits(thousands) + ' ആയിരം');
+  if (amount >= 100000) {
+    const lakhs = Math.floor(amount / 100000);
+    const lakhRem = amount % 100000;
+    if (lakhs === 1) parts.push(lakhRem > 0 ? 'ഒരു ലക്ഷത്തി' : 'ഒരു ലക്ഷം');
+    else parts.push(twoDigits(lakhs) + (lakhRem > 0 ? ' ലക്ഷത്തി' : ' ലക്ഷം'));
   }
 
-  const rem = amount % 1000;
-  if (rem === 0) return parts.join(' ');
+  const k_amount = amount % 100000;
+  if (k_amount >= 10000) {
+    const ten_k = Math.floor(k_amount / 1000);
+    parts.push(twoDigits(ten_k) + (rem > 0 ? ' ആയിരത്തി' : ' ആയിരം'));
+  } else if (k_amount >= 1000) {
+    const thousands = Math.floor(k_amount / 1000);
+    if (thousands === 1) parts.push(rem > 0 ? 'ആയിരത്തി' : 'ആയിരം');
+    else {
+      const t_word = thousands === 2 ? 'രണ്ടായിരം' :
+                     thousands === 3 ? 'മൂന്നായിരം' :
+                     thousands === 4 ? 'നാലായിരം' :
+                     thousands === 5 ? 'അയ്യായിരം' :
+                     thousands === 6 ? 'ആറായിരം' :
+                     thousands === 7 ? 'ഏഴായിരം' :
+                     thousands === 8 ? 'എട്ടായിരം' :
+                     thousands === 9 ? 'ഒൻപതിനായിരം' :
+                     twoDigits(thousands) + ' ആയിരം';
+      parts.push(rem > 0 ? t_word.replace(/ആയിരം$/, 'ആയിരത്തി') : t_word);
+    }
+  }
+
+  if (rem === 0) return parts.join(' ').trim();
 
   const h = Math.floor(rem / 100);
   const rest = rem % 100;
 
   if (h > 0) {
-    parts.push(rest === 0 ? HUNDREDS[h] : HUNDREDS[h] + 'ടി');
+    parts.push(rest === 0 ? HUNDREDS[h] : HUNDREDS_PREFIX[h]);
   }
   if (rest > 0) parts.push(twoDigits(rest));
 
-  return parts.join(' ');
+  return parts.join(' ').trim();
 }
 
 // ─── Payment Method Labels ─────────────────────────────────────────────────────
 
 export const PAYMENT_MALAYALAM: Record<string, string> = {
-  cash:   'ക്യാഷ്',
-  upi:    'ഫോൺ‌പേ',
-  gpay:   'ഗൂഗിൾ പേ',
-  phonepe:'ഫോൺ‌പേ',
-  paytm:  'പേ‌ടിഎം',
-  card:   'കാർഡ്',
-  credit: 'ക്രെഡിറ്റ്',
-  debit:  'ഡെബിറ്റ് കാർഡ്',
+  cash:    'ക്യാഷ്',
+  upi:     'യൂ പി ഐ',
+  gpay:    'ഗൂഗിൾ പേ',
+  phonepe: 'ഫോൺ‌പേ',
+  paytm:   'പേ‌ടിഎം',
+  card:    'കാർഡ്',
+  credit:  'ക്രെഡിറ്റ് കാർഡ്',
+  debit:   'ഡെബിറ്റ് കാർഡ്',
 };
 
 // ─── Speech Event Listeners ───────────────────────────────────────────────────
@@ -151,20 +174,45 @@ export interface VoiceOptions {
 interface SpeechJob {
   text: string;
   opts: VoiceOptions;
-  /** pause in ms BEFORE this job */
   pauseBefore?: number;
 }
 
 let queue: SpeechJob[] = [];
 let isSpeaking = false;
 let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
-let warmUpDone = false;
 
 function clearWatchdog() {
   if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
 }
 
-// ─── Provider: Web Speech API ─────────────────────────────────────────────────
+// ─── AudioContext User-Gesture Unlock ─────────────────────────────────────────
+// AudioContext needs a user gesture to start. We unlock on first interaction.
+
+let _audioCtxUnlocked = false;
+
+function unlockAudioContext() {
+  if (_audioCtxUnlocked) return;
+  _audioCtxUnlocked = true;
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const buf = ctx.createBuffer(1, 1, 22050);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+    setTimeout(() => ctx.close().catch(() => {}), 100);
+  } catch { /* ignore */ }
+}
+
+// Register on first user interaction
+if (typeof window !== 'undefined') {
+  const unlock = () => { unlockAudioContext(); };
+  ['click', 'touchstart', 'keydown', 'pointerdown'].forEach(e =>
+    window.addEventListener(e, unlock, { once: false, passive: true })
+  );
+}
+
+// ─── Provider: Web Speech API (PRIMARY BROWSER FALLBACK) ──────────────────────
 
 function pickBrowserVoice(voiceURI?: string | null): SpeechSynthesisVoice | null {
   const voices = window.speechSynthesis.getVoices();
@@ -173,56 +221,67 @@ function pickBrowserVoice(voiceURI?: string | null): SpeechSynthesisVoice | null
     const v = voices.find(v => v.voiceURI === voiceURI);
     if (v) return v;
   }
+  // Prefer ml-IN voices (native Malayalam)
   return (
     voices.find(v => v.lang === 'ml-IN') ||
     voices.find(v => v.lang.startsWith('ml')) ||
-    voices.find(v => v.lang === 'hi-IN') ||
-    voices.find(v => v.lang === 'en-IN') ||
-    voices.find(v => v.default) ||
-    voices[0] || null
+    null
   );
-}
-
-/** Warm up Web Speech API — Chrome needs a first empty utterance */
-function warmUpBrowserTTS() {
-  if (warmUpDone || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-  warmUpDone = true;
-  try {
-    const utt = new SpeechSynthesisUtterance('');
-    utt.volume = 0;
-    window.speechSynthesis.speak(utt);
-  } catch { /* ignore */ }
 }
 
 function speakWithBrowser(job: SpeechJob): Promise<void> {
   return new Promise((resolve) => {
     const synth = window.speechSynthesis;
-    const utt = new SpeechSynthesisUtterance(job.text);
+
+    // Cancel any stuck speech first
+    synth.cancel();
+
+    const cleanText = job.text.replace(/<[^>]+>/g, '').trim();
+    if (!cleanText) { resolve(); return; }
+
+    const utt = new SpeechSynthesisUtterance(cleanText);
 
     const doSpeak = () => {
       const voice = pickBrowserVoice(job.opts.voiceURI);
-      if (voice) { utt.voice = voice; utt.lang = voice.lang; }
-      else utt.lang = 'ml-IN';
+      if (voice) {
+        utt.voice = voice;
+        utt.lang = voice.lang;
+      } else {
+        utt.lang = 'ml-IN';
+      }
 
       utt.volume = Math.max(0, Math.min(1, job.opts.volume ?? 1));
-      utt.rate   = Math.max(0.5, Math.min(1.5, job.opts.rate ?? 0.82));
-      utt.pitch  = Math.max(0, Math.min(2, job.opts.pitch ?? 1.0));
+      utt.rate   = Math.max(0.5, Math.min(1.5, job.opts.rate ?? 0.88));
+      utt.pitch  = Math.max(0, Math.min(2, job.opts.pitch ?? 1.1));
 
-      const finish = () => { clearWatchdog(); resolve(); };
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        clearWatchdog();
+        resolve();
+      };
+
       utt.onend   = finish;
       utt.onerror = (e) => {
         console.warn('[Voice] Browser TTS error:', e.error);
         finish();
       };
 
-      // Safety watchdog — Chrome bug: onend sometimes never fires
-      const wdMs = Math.max(5000, job.text.length * 200);
+      // Watchdog: Chrome bug — onend sometimes never fires
+      const wdMs = Math.max(6000, cleanText.length * 220);
       watchdogTimer = setTimeout(() => {
         console.warn('[Voice] Watchdog fired — resetting');
+        synth.cancel();
         finish();
       }, wdMs);
 
       synth.speak(utt);
+
+      // Chrome workaround: resume if paused
+      setTimeout(() => {
+        if (synth.paused) synth.resume();
+      }, 100);
     };
 
     const voices = synth.getVoices();
@@ -237,7 +296,8 @@ function speakWithBrowser(job: SpeechJob): Promise<void> {
         doSpeak();
       };
       synth.addEventListener('voiceschanged', onReady);
-      setTimeout(onReady, 2000);
+      // Fallback if voiceschanged never fires
+      setTimeout(() => { if (!handled) onReady(); }, 1500);
     }
   });
 }
@@ -245,10 +305,14 @@ function speakWithBrowser(job: SpeechJob): Promise<void> {
 // ─── Provider: Google Cloud WaveNet ──────────────────────────────────────────
 
 async function speakWithGoogle(job: SpeechJob, googleOpts: GoogleTTSOptions): Promise<boolean> {
-  const b64 = await synthesizeWithGoogle(job.text, googleOpts);
-  if (!b64) return false;
-  await playBase64Audio(b64, job.opts.volume ?? 1);
-  return true;
+  try {
+    const b64 = await synthesizeWithGoogle(job.text, googleOpts);
+    if (!b64) return false;
+    await playBase64Audio(b64, job.opts.volume ?? 1);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ─── Core Queue Processor ─────────────────────────────────────────────────────
@@ -259,14 +323,21 @@ async function processQueue() {
 
   const job = queue.shift()!;
 
-  // Natural pause before utterance
+  // Safety: reset after 12s if stuck
+  const globalWatchdog = setTimeout(() => {
+    if (isSpeaking) {
+      console.warn('[Voice] Queue stuck — force resetting');
+      isSpeaking = false;
+      processQueue();
+    }
+  }, 12000);
+
   if (job.pauseBefore && job.pauseBefore > 0) {
     await new Promise(r => setTimeout(r, job.pauseBefore));
   }
 
   notifyListeners({ text: job.text, provider: null });
 
-  // Determine provider from settings
   const settings = _getSettings?.();
   const provider  = settings?.ttsProvider ?? 'browser';
   const apiKey    = settings?.googleApiKey ?? '';
@@ -277,9 +348,9 @@ async function processQueue() {
     const googleOpts: GoogleTTSOptions = {
       apiKey,
       voiceName: 'ml-IN-Wavenet-A',
-      speakingRate: job.opts.rate ?? 0.9,
-      pitch:        job.opts.pitch ?? -1.5,
-      volumeGainDb: 2.0,
+      speakingRate: job.opts.rate ?? 1.0,
+      pitch:        job.opts.pitch ?? -1.0,
+      volumeGainDb: 10.0,
     };
     notifyListeners({ text: job.text, provider: 'google' });
     usedGoogle = await speakWithGoogle(job, googleOpts);
@@ -292,25 +363,25 @@ async function processQueue() {
 
   notifyListeners({ text: null, provider: null });
 
+  clearTimeout(globalWatchdog);
   isSpeaking = false;
 
-  // Natural 180 ms gap between utterances for realistic rhythm
-  setTimeout(processQueue, 180);
+  setTimeout(processQueue, 200);
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-/** Enqueue a text utterance (max queue depth 12) */
 export function speak(text: string, opts: VoiceOptions = {}, pauseBefore = 0) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
   if (!text.trim()) return;
+
+  if (window.speechSynthesis.paused) window.speechSynthesis.resume();
   if (queue.length >= 12) return;
-  warmUpBrowserTTS();
+
   queue.push({ text, opts, pauseBefore });
   processQueue();
 }
 
-/** Cancel everything immediately */
 export function stopSpeech() {
   if (typeof window === 'undefined') return;
   clearWatchdog();
@@ -320,80 +391,77 @@ export function stopSpeech() {
   notifyListeners({ text: null, provider: null });
 }
 
-/** Play a test phrase (clears queue first) */
 export function testPhrase(text: string, opts: VoiceOptions = {}) {
   stopSpeech();
   speak(text, opts);
 }
 
-/** Get all available browser voices */
 export function getAvailableVoices(): SpeechSynthesisVoice[] {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return [];
   return window.speechSynthesis.getVoices();
 }
 
-/** Check if speech synthesis is supported */
 export function isSpeechSupported(): boolean {
   return typeof window !== 'undefined' && 'speechSynthesis' in window;
 }
 
-/** Call when Google API key changes — clears audio cache */
 export function onApiKeyChange() {
   clearAudioCache();
 }
 
-// ─── High-Level Announcement Functions ───────────────────────────────────────
+// ─── Kerala-Style Natural Announcement Phrases ────────────────────────────────
+// Sounds like a real Kerala supermarket POS machine
 
-/** "ബിൽ വിജയകരമായി തയ്യാറാക്കി" */
+/** "ബിൽ റെഡി" */
 export function announceBillGenerated(opts: VoiceOptions = {}) {
-  speak('ബിൽ വിജയകരമായി തയ്യാറാക്കി', opts);
+  speak('ബിൽ റെഡി ആയിട്ടുണ്ട്.', opts);
 }
 
-/** "ആകെ തുക [amount] രൂപ" */
+/** "ആകെ [amount] രൂപ ആകും" */
 export function announceTotalAmount(amount: number, opts: VoiceOptions = {}) {
-  const words = amountToMalayalam(Math.round(amount));
-  speak(`ആകെ തുക ${words} രൂപ`, opts);
+  const words = amountToMalayalam(amount, true);
+  speak(`ആകെ ${words} രൂപ ആകും.`, opts);
 }
 
-/** "ഫോൺ‌പേ / ക്യാഷ് / കാർഡ് വഴി [amount] രൂപ അടച്ചു" */
+/** Kerala style: "ക്യാഷ് [amount] രൂപ കിട്ടി" */
 export function announcePaymentReceived(method: string, amount: number, opts: VoiceOptions = {}) {
   const methodWord = PAYMENT_MALAYALAM[method.toLowerCase()] || method;
-  const words = amountToMalayalam(Math.round(amount));
-  speak(`${methodWord} വഴി ${words} രൂപ അടച്ചു`, opts, 120);
+  const words = amountToMalayalam(amount, true);
+  speak(`${methodWord}, ${words} രൂപ കിട്ടി.`, opts, 120);
 }
 
-/** "UPI പേയ്‌മെന്റ് വിജയകരമായി" */
+/** "യൂ പി ഐ സക്സസ്" */
 export function announceUPISuccess(opts: VoiceOptions = {}) {
-  speak('യൂ‌പി‌ഐ പേയ്‌മെന്റ് വിജയകരമായി', opts, 100);
+  speak('യൂ പി ഐ സക്സസ്.', opts, 120);
 }
 
-/** "ബാക്കി തുക [amount] രൂപ" */
+/** "ബാക്കി [amount] രൂപ തിരിച്ചു കൊടുക്കണം" */
 export function announceChange(amount: number, opts: VoiceOptions = {}) {
   if (amount <= 0) return;
-  const words = amountToMalayalam(Math.round(amount));
-  speak(`ബാക്കി തുക ${words} രൂപ`, opts, 120);
+  const words = amountToMalayalam(amount, true);
+  speak(`ബാക്കി ${words} രൂപ തിരിച്ചു കൊടുക്കണം.`, opts, 120);
 }
 
-/** "കുടിശ്ശിക തുക [amount] രൂപ" */
+/** "കൊടുക്കാൻ ബാക്കി [amount] രൂപ" */
 export function announcePendingAmount(amount: number, opts: VoiceOptions = {}) {
   if (amount <= 0) return;
-  const words = amountToMalayalam(Math.round(amount));
-  speak(`കുടിശ്ശിക തുക ${words} രൂപ`, opts, 120);
+  const words = amountToMalayalam(amount, true);
+  speak(`കൊടുക്കാൻ ബാക്കി ${words} രൂപ ഉണ്ട്.`, opts, 120);
 }
 
-/** "നന്ദി, വീണ്ടും വരിക" */
+/** "നന്ദി, വീണ്ടും വരൂ" */
 export function announceThankYou(opts: VoiceOptions = {}) {
-  speak('നന്ദി, വീണ്ടും വരിക', opts, 200);
+  speak('നന്ദി, വീണ്ടും വരൂ.', opts, 250);
 }
 
 /** "[productName] ചേർത്തു" */
 export function announceItemAdded(productName: string, opts: VoiceOptions = {}) {
-  speak(`${productName} ചേർത്തു`, opts);
+  speak(`${productName} ചേർത്തു.`, opts);
 }
 
 /**
- * Full bill announcement sequence:
- * Bill generated → Total → Payment → Change → Thank you
+ * Full bill announcement:
+ * Bill ready → Total → Payment → Change → Thank you
  */
 export function announceFullBill(params: {
   amount: number;
@@ -415,7 +483,7 @@ export function announceFullBill(params: {
 }
 
 /**
- * Flash bill (short): Total → Payment → Thank you
+ * Flash bill (short): Payment → Thank you
  */
 export function announceFlashBill(params: {
   amount: number;
@@ -423,7 +491,6 @@ export function announceFlashBill(params: {
   opts?: VoiceOptions;
 }) {
   const { amount, paymentMethod, opts = {} } = params;
-  announceTotalAmount(amount, opts);
 
   if (paymentMethod.toLowerCase() === 'upi') {
     announceUPISuccess(opts);

@@ -40,8 +40,9 @@ export async function synthesizeWithGoogle(
   if (audioCache.has(cacheKey)) return audioCache.get(cacheKey)!;
 
   try {
+    const isSsml = text.trim().startsWith('<speak>');
     const body = {
-      input: { text },
+      input: isSsml ? { ssml: text } : { text },
       voice: {
         languageCode: 'ml-IN',
         name: opts.voiceName || 'ml-IN-Wavenet-A',
@@ -51,9 +52,9 @@ export async function synthesizeWithGoogle(
       },
       audioConfig: {
         audioEncoding: 'MP3',
-        speakingRate: opts.speakingRate ?? 0.9,
-        pitch: opts.pitch ?? -1.5,          // slightly lower pitch = warmer/more natural
-        volumeGainDb: opts.volumeGainDb ?? 2.0,
+        speakingRate: opts.speakingRate ?? 1.0,
+        pitch: opts.pitch ?? -1.0,          // standard/natural pitch
+        volumeGainDb: opts.volumeGainDb ?? 6.0,
         effectsProfileId: ['large-home-entertainment-class-device'], // speaker optimized
       },
     };
@@ -102,26 +103,36 @@ export async function playBase64Audio(
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
       const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      ctx.decodeAudioData(bytes.buffer, (buffer) => {
-        const source = ctx.createBufferSource();
-        source.buffer = buffer;
 
-        // Gain node for volume control
-        const gain = ctx.createGain();
-        gain.gain.value = Math.max(0, Math.min(2, volumeMultiplier));
+      const playAudio = () => {
+        ctx.decodeAudioData(bytes.buffer, (buffer) => {
+          const source = ctx.createBufferSource();
+          source.buffer = buffer;
 
-        source.connect(gain);
-        gain.connect(ctx.destination);
-        source.start(0);
-        source.onended = () => {
+          const gain = ctx.createGain();
+          gain.gain.value = Math.max(0, Math.min(2, volumeMultiplier));
+
+          source.connect(gain);
+          gain.connect(ctx.destination);
+          source.start(0);
+          source.onended = () => {
+            ctx.close().catch(() => {});
+            resolve();
+          };
+          // Safety timeout
+          setTimeout(() => { ctx.close().catch(() => {}); resolve(); }, 15000);
+        }, () => {
           ctx.close().catch(() => {});
           resolve();
-        };
-      }, () => {
-        // Decode error fallback
-        ctx.close().catch(() => {});
-        resolve();
-      });
+        });
+      };
+
+      // Resume suspended AudioContext (happens when no user gesture yet)
+      if (ctx.state === 'suspended') {
+        ctx.resume().then(playAudio).catch(() => resolve());
+      } else {
+        playAudio();
+      }
     } catch {
       resolve();
     }
