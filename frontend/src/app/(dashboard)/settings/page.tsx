@@ -1,13 +1,13 @@
-'use client';
+﻿'use client';
 import { useState, useEffect } from 'react';
-import { Save, Building2, CreditCard, Shield, Palette, Database, Trash2, AlertTriangle, LogOut, Loader2, Users, ShoppingBag, Calendar, ClipboardList, Wallet, X, DollarSign, UserPlus, Eye, EyeOff, Volume2 } from 'lucide-react';
+import { Save, Building2, CreditCard, Shield, Palette, Database, Trash2, AlertTriangle, LogOut, Loader2, Users, ShoppingBag, Calendar, ClipboardList, Wallet, X, DollarSign, UserPlus, Eye, EyeOff, Volume2, Wifi, WifiOff, Mic, Key, ChevronDown, ChevronUp } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '@/store/authStore';
 import { useTheme } from 'next-themes';
 import api from '@/lib/api';
 import { clsx } from 'clsx';
-import { useVoiceSettings, getVoiceOpts } from '@/hooks/useVoiceSettings';
-import { testPhrase, getAvailableVoices, stopSpeech, announceTotalAmount, announcePaymentReceived, announceChange, announceThankYou, announceBillGenerated } from '@/lib/malayalamVoice';
+import { useVoiceSettings, getVoiceOpts, type TTSProvider } from '@/hooks/useVoiceSettings';
+import { testPhrase, getAvailableVoices, stopSpeech, announceTotalAmount, announcePaymentReceived, announceChange, announceThankYou, announceBillGenerated, onApiKeyChange } from '@/lib/malayalamVoice';
 
 const TABS = [
   { id: 'company',    label: 'Company',    icon: Building2 },
@@ -26,25 +26,46 @@ const WIPE_ITEMS = [
   { key: 'attendance', label: 'All Attendance',        icon: Calendar,      color: 'orange', desc: 'Clears all attendance check-in/out and admin-marked records.' },
   { key: 'leaves',     label: 'All Leave Records',     icon: ClipboardList, color: 'orange', desc: 'Removes all leave applications and approvals.' },
   { key: 'salaries',   label: 'All Salary Records',    icon: Wallet,        color: 'orange', desc: 'Deletes all generated salary and payroll data.' },
-  { key: 'all',        label: '⚠️ WIPE ALL DATA',       icon: AlertTriangle, color: 'red',    desc: 'Nuclear option — deletes ALL records. Products & Staff are kept.' },
+  { key: 'all',        label: 'âš ï¸ WIPE ALL DATA',       icon: AlertTriangle, color: 'red',    desc: 'Nuclear option â€” deletes ALL records. Products & Staff are kept.' },
 ];
 
 export default function SettingsPage() {
   const { user, logout } = useAuthStore();
   const { theme, setTheme } = useTheme();
 
-  // ── Voice settings ─────────────────────────────────────────────────────────
+  // â”€â”€ Voice settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const voice = useVoiceSettings();
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [testingGoogle, setTestingGoogle] = useState(false);
+  const [googleKeyDraft, setGoogleKeyDraft] = useState(voice.googleApiKey || '');
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
     const load = () => setAvailableVoices(getAvailableVoices());
-    // Voices may load asynchronously in Chrome
     window.speechSynthesis.onvoiceschanged = load;
     load();
     return () => { window.speechSynthesis.onvoiceschanged = null; };
   }, []);
+
+  const saveGoogleKey = () => {
+    voice.setGoogleApiKey(googleKeyDraft.trim());
+    onApiKeyChange();
+    toast.success(googleKeyDraft.trim() ? 'âœ… Google API key saved!' : 'ðŸ—‘ API key cleared');
+  };
+
+  const testGoogleVoice = async () => {
+    if (!voice.googleApiKey) { toast.error('Enter and save your Google API key first'); return; }
+    setTestingGoogle(true);
+    try {
+      const prev = voice.ttsProvider;
+      voice.setTtsProvider('google');
+      await new Promise(r => setTimeout(r, 100));
+      testPhrase('à´†à´•àµ† à´¤àµà´• à´…à´žàµà´žàµ‚à´±àµà´±à´¿ à´¨à´¾àµ½à´ªàµà´ªà´¤àµ à´°àµ‚à´ª. à´¨à´¨àµà´¦à´¿, à´µàµ€à´£àµà´Ÿàµà´‚ à´µà´°à´¿à´•', getVoiceOpts(voice));
+      if (prev !== 'google') setTimeout(() => voice.setTtsProvider(prev), 4000);
+    } finally { setTestingGoogle(false); }
+  };
 
   const [activeTab, setActiveTab] = useState('company');
   const [wiping, setWiping]       = useState<string|null>(null);
@@ -67,7 +88,7 @@ export default function SettingsPage() {
   const [passwords, setPasswords] = useState({ current: '', newPass: '', confirm: '' });
   const [changingPass, setChangingPass] = useState(false);
 
-  // ── Create User state ──────────────────────────────────────────────────────
+  // â”€â”€ Create User state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [newUser, setNewUser] = useState({ name: '', email: '', phone: '', role: 'staff', password: '', confirm: '' });
   const [showNewPw, setShowNewPw] = useState(false);
   const [creatingUser, setCreatingUser] = useState(false);
@@ -88,7 +109,7 @@ export default function SettingsPage() {
         role: newUser.role,
         password: newUser.password,
       });
-      toast.success(`✅ User "${res.data.data.user.name}" created!`);
+      toast.success(`âœ… User "${res.data.data.user.name}" created!`);
       setCreatedUsers(prev => [res.data.data.user, ...prev]);
       setNewUser({ name: '', email: '', phone: '', role: 'staff', password: '', confirm: '' });
     } catch (e: any) {
@@ -98,14 +119,14 @@ export default function SettingsPage() {
 
   const handleSave = () => toast.success('Settings saved!');
 
-  // Called from the Delete button — opens confirm modal, NO window.confirm
+  // Called from the Delete button â€” opens confirm modal, NO window.confirm
   const requestWipe = (key: string) => {
     const item = WIPE_ITEMS.find(i => i.key === key);
     if (!item) return;
     setConfirmModal({ key, label: item.label });
   };
 
-  // Called from modal confirm button — actually does the delete
+  // Called from modal confirm button â€” actually does the delete
   const executeWipe = async () => {
     if (!confirmModal) return;
     const { key } = confirmModal;
@@ -113,11 +134,11 @@ export default function SettingsPage() {
     setWiping(key);
     try {
       const res = await api.delete(`/admin/wipe/${key}`);
-      toast.success(res.data?.message || '✅ Deleted successfully');
+      toast.success(res.data?.message || 'âœ… Deleted successfully');
     } catch (e: any) {
       const msg = e.response?.data?.message || e.message || 'Delete failed';
       const status = e.response?.status;
-      toast.error(status === 403 ? '❌ Admin access required' : `❌ ${msg}`);
+      toast.error(status === 403 ? 'âŒ Admin access required' : `âŒ ${msg}`);
       console.error('[wipe]', status, e.response?.data);
     } finally {
       setWiping(null);
@@ -131,7 +152,7 @@ export default function SettingsPage() {
     setChangingPass(true);
     try {
       await api.patch('/auth/update-password', { currentPassword: passwords.current, newPassword: passwords.newPass });
-      toast.success('✅ Password changed!');
+      toast.success('âœ… Password changed!');
       setPasswords({ current: '', newPass: '', confirm: '' });
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Failed');
@@ -140,7 +161,7 @@ export default function SettingsPage() {
 
   return (
     <>
-      {/* ── Confirm Modal (replaces window.confirm) ── */}
+      {/* â”€â”€ Confirm Modal (replaces window.confirm) â”€â”€ */}
       {confirmModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="bg-white dark:bg-stone-900 rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4">
@@ -199,7 +220,7 @@ export default function SettingsPage() {
           {/* Content */}
           <div className="flex-1 space-y-4">
 
-            {/* ─── Company ─── */}
+            {/* â”€â”€â”€ Company â”€â”€â”€ */}
             {activeTab === 'company' && (
               <div className="card p-6 space-y-4">
                 <h2 className="font-bold text-stone-800 dark:text-stone-100">Company Information</h2>
@@ -233,7 +254,7 @@ export default function SettingsPage() {
               </div>
             )}
 
-            {/* ─── Billing ─── */}
+            {/* â”€â”€â”€ Billing â”€â”€â”€ */}
             {activeTab === 'billing' && (
               <div className="card p-6 space-y-4">
                 <h2 className="font-bold text-stone-800 dark:text-stone-100">Billing Settings</h2>
@@ -266,7 +287,7 @@ export default function SettingsPage() {
               </div>
             )}
 
-            {/* ─── Appearance ─── */}
+            {/* â”€â”€â”€ Appearance â”€â”€â”€ */}
             {activeTab === 'appearance' && (
               <div className="card p-6 space-y-4">
                 <h2 className="font-bold text-stone-800 dark:text-stone-100">Appearance</h2>
@@ -276,14 +297,14 @@ export default function SettingsPage() {
                     <button key={t} onClick={() => setTheme(t)}
                       className={clsx('flex-1 py-4 rounded-2xl border-2 text-sm font-bold capitalize transition-all',
                         theme === t ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20 text-amber-700' : 'border-stone-200 dark:border-stone-600 text-stone-500')}>
-                      {t === 'light' ? '☀️' : t === 'dark' ? '🌙' : '💻'} {t}
+                      {t === 'light' ? 'â˜€ï¸' : t === 'dark' ? 'ðŸŒ™' : 'ðŸ’»'} {t}
                     </button>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* ─── Security ─── */}
+            {/* â”€â”€â”€ Security â”€â”€â”€ */}
             {activeTab === 'security' && (
               <div className="space-y-4">
                 <div className="card p-6 space-y-4">
@@ -294,8 +315,8 @@ export default function SettingsPage() {
                     </div>
                     <div className="flex-1">
                       <p className="font-bold text-stone-800 dark:text-stone-100">{user?.name}</p>
-                      <p className="text-xs text-stone-500">{user?.email} · <span className="capitalize text-emerald-600 font-semibold">{user?.role}</span></p>
-                      <p className="text-xs text-stone-400 mt-0.5">Session active · {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                      <p className="text-xs text-stone-500">{user?.email} Â· <span className="capitalize text-emerald-600 font-semibold">{user?.role}</span></p>
+                      <p className="text-xs text-stone-400 mt-0.5">Session active Â· {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                     </div>
                     <button onClick={logout} className="flex items-center gap-1.5 px-3 py-2 bg-red-100 dark:bg-red-900/20 text-red-600 hover:bg-red-200 rounded-xl text-sm font-bold">
                       <LogOut className="w-4 h-4" /> Sign Out
@@ -306,7 +327,7 @@ export default function SettingsPage() {
                   <h2 className="font-bold text-stone-800 dark:text-stone-100">Change Password</h2>
                   <div>
                     <label className="text-xs font-bold text-stone-500 mb-1 block uppercase">Current Password</label>
-                    <input type="password" value={passwords.current} onChange={e => setPasswords(p => ({ ...p, current: e.target.value }))} className="input-field" placeholder="••••••••" />
+                    <input type="password" value={passwords.current} onChange={e => setPasswords(p => ({ ...p, current: e.target.value }))} className="input-field" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" />
                   </div>
                   <div>
                     <label className="text-xs font-bold text-stone-500 mb-1 block uppercase">New Password</label>
@@ -323,7 +344,7 @@ export default function SettingsPage() {
               </div>
             )}
 
-            {/* ─── Users (Admin Only) ─── */}
+            {/* â”€â”€â”€ Users (Admin Only) â”€â”€â”€ */}
             {activeTab === 'users' && (
               <div className="space-y-4">
                 {/* Info banner */}
@@ -430,7 +451,7 @@ export default function SettingsPage() {
                         </div>
                         <div className="flex-1">
                           <p className="font-bold text-stone-800 dark:text-stone-100 text-sm">{u.name}</p>
-                          <p className="text-xs text-stone-500">{u.email} · <span className="capitalize text-emerald-600 font-semibold">{u.role}</span></p>
+                          <p className="text-xs text-stone-500">{u.email} Â· <span className="capitalize text-emerald-600 font-semibold">{u.role}</span></p>
                         </div>
                         <button onClick={() => setCreatedUsers(prev => prev.filter(x => x._id !== u._id))} className="text-stone-400 hover:text-stone-600">
                           <X className="w-4 h-4" />
@@ -442,27 +463,33 @@ export default function SettingsPage() {
               </div>
             )}
 
-            {/* ─── Voice ─── */}
+            {/* â”€â”€â”€ Voice â”€â”€â”€ */}
             {activeTab === 'voice' && (
               <div className="space-y-4">
-                {/* Info banner */}
-                <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/50 rounded-2xl p-4 flex items-start gap-3">
-                  <Volume2 className="w-5 h-5 text-violet-600 flex-shrink-0 mt-0.5" />
+
+                {/* Header banner */}
+                <div className="rounded-2xl p-4 flex items-start gap-3 border"
+                  style={{ background: 'linear-gradient(135deg,#4c1d95 0%,#6d28d9 60%,#7c3aed 100%)', borderColor: 'rgba(255,255,255,0.1)' }}>
+                  <Mic className="w-5 h-5 text-white flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="font-bold text-violet-700 dark:text-violet-400">Malayalam Voice Announcements</p>
-                    <p className="text-xs text-violet-600 dark:text-violet-500 mt-0.5">
-                      Speaks bill details aloud when a bill is saved — like a supermarket POS system.
-                      Uses your device’s built-in speech engine (Chrome recommended for best Malayalam support).
+                    <p className="font-bold text-white">Malayalam Neural Voice Announcements</p>
+                    <p className="text-xs text-violet-200 mt-0.5">
+                      Speaks bill details aloud â€” like a real Kerala supermarket POS machine.
+                      Use <strong className="text-white">Google WaveNet</strong> for ultra-realistic human voice,
+                      or <strong className="text-white">Browser TTS</strong> as free fallback.
                     </p>
                   </div>
                 </div>
 
-                {/* Master Enable */}
+                {/* Master toggle + provider picker */}
                 <div className="card p-6 space-y-5">
+                  {/* Enable toggle */}
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-bold text-stone-800 dark:text-stone-100">Voice Announcements</p>
-                      <p className="text-xs text-stone-500 mt-0.5">ഭാഷണം / പ്രകടന {voice.voiceEnabled ? '— സക്രിയമാണ്‍' : '— നിഷ്ക്രിയമാണ്‍'}</p>
+                      <p className="text-xs text-stone-500 mt-0.5">
+                        {voice.voiceEnabled ? 'ðŸ”Š à´¸à´•àµà´°à´¿à´¯à´®à´¾à´£àµâ€ â€” Active' : 'ðŸ”‡ à´¨à´¿à´·àµà´•àµà´°à´¿à´¯à´®à´¾à´£àµâ€ â€” Muted'}
+                      </p>
                     </div>
                     <button
                       id="voice-enable-toggle"
@@ -473,19 +500,39 @@ export default function SettingsPage() {
                     </button>
                   </div>
 
+                  {/* TTS Provider */}
+                  <div>
+                    <label className="text-xs font-bold text-stone-500 uppercase mb-2 block">Voice Engine / Provider</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {([
+                        { id: 'browser' as TTSProvider, label: 'Browser TTS', sub: 'Free Â· Built-in', icon: WifiOff, color: 'stone' },
+                        { id: 'google'  as TTSProvider, label: 'Google WaveNet', sub: 'Neural Â· Human-quality', icon: Wifi, color: 'violet' },
+                      ]).map(({ id, label, sub, icon: Icon, color }) => (
+                        <button key={id} onClick={() => voice.setTtsProvider(id)}
+                          className={clsx('flex items-center gap-2 p-3 rounded-xl border-2 text-left transition-all',
+                            voice.ttsProvider === id
+                              ? (color === 'violet' ? 'border-violet-500 bg-violet-50 dark:bg-violet-900/20' : 'border-stone-400 bg-stone-50 dark:bg-stone-700/40')
+                              : 'border-stone-200 dark:border-stone-700 hover:border-stone-300'
+                          )}>
+                          <Icon className={clsx('w-4 h-4 flex-shrink-0', voice.ttsProvider === id ? (color === 'violet' ? 'text-violet-600' : 'text-stone-600') : 'text-stone-400')} />
+                          <div>
+                            <p className="text-xs font-bold text-stone-800 dark:text-stone-100">{label}</p>
+                            <p className="text-[10px] text-stone-500">{sub}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   {/* Volume */}
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <label className="text-xs font-bold text-stone-500 uppercase">Volume</label>
                       <span className="text-xs font-bold text-violet-600">{Math.round(voice.volume * 100)}%</span>
                     </div>
-                    <input
-                      id="voice-volume-slider"
-                      type="range" min="0" max="1" step="0.05"
-                      value={voice.volume}
-                      onChange={e => voice.setVolume(parseFloat(e.target.value))}
-                      className="w-full accent-violet-600 h-2 rounded-full cursor-pointer"
-                    />
+                    <input id="voice-volume-slider" type="range" min="0" max="1" step="0.05"
+                      value={voice.volume} onChange={e => voice.setVolume(parseFloat(e.target.value))}
+                      className="w-full accent-violet-600 h-2 rounded-full cursor-pointer" />
                   </div>
 
                   {/* Rate */}
@@ -493,81 +540,135 @@ export default function SettingsPage() {
                     <div className="flex items-center justify-between mb-2">
                       <label className="text-xs font-bold text-stone-500 uppercase">Speech Speed</label>
                       <span className="text-xs font-bold text-violet-600">
-                        {voice.rate < 0.75 ? 'Slow' : voice.rate < 1.0 ? 'Normal' : voice.rate < 1.2 ? 'Fast' : 'Very Fast'}
-                        {' '}({voice.rate.toFixed(2)}×)
+                        {voice.rate < 0.75 ? 'Slow' : voice.rate < 1.0 ? 'Natural' : voice.rate < 1.2 ? 'Fast' : 'Very Fast'} ({voice.rate.toFixed(2)}Ã—)
                       </span>
                     </div>
-                    <input
-                      id="voice-rate-slider"
-                      type="range" min="0.5" max="1.5" step="0.05"
-                      value={voice.rate}
-                      onChange={e => voice.setRate(parseFloat(e.target.value))}
-                      className="w-full accent-violet-600 h-2 rounded-full cursor-pointer"
-                    />
+                    <input id="voice-rate-slider" type="range" min="0.5" max="1.5" step="0.05"
+                      value={voice.rate} onChange={e => voice.setRate(parseFloat(e.target.value))}
+                      className="w-full accent-violet-600 h-2 rounded-full cursor-pointer" />
                   </div>
 
-                  {/* Voice Selector */}
-                  <div>
-                    <label className="text-xs font-bold text-stone-500 uppercase mb-2 block">Voice / Language</label>
-                    <select
-                      id="voice-selector"
-                      value={voice.selectedVoiceURI || ''}
-                      onChange={e => voice.setSelectedVoiceURI(e.target.value || null)}
-                      className="input-field"
-                    >
-                      <option value="">✨ Auto — best Malayalam voice</option>
-                      {availableVoices.map(v => (
-                        <option key={v.voiceURI} value={v.voiceURI}>
-                          {v.name} ({v.lang}){v.lang.startsWith('ml') ? ' ✓ Malayalam' : ''}
-                        </option>
-                      ))}
-                    </select>
-                    {availableVoices.filter(v => v.lang.startsWith('ml')).length === 0 && (
-                      <p className="text-xs text-amber-600 mt-1.5">
-                        ⚠️ No Malayalam voice found on this device. Install a Malayalam TTS pack in Windows Settings → Time &amp; Language → Speech for best results.
-                      </p>
+                  {/* Advanced (pitch + browser voice selector) */}
+                  <button onClick={() => setAdvancedOpen(v => !v)}
+                    className="flex items-center gap-1.5 text-xs font-bold text-stone-500 hover:text-violet-600 transition-colors">
+                    {advancedOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    Advanced Options
+                  </button>
+
+                  {advancedOpen && (
+                    <div className="space-y-4 pt-2 border-t border-stone-100 dark:border-stone-700">
+                      {/* Pitch */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-xs font-bold text-stone-500 uppercase">Pitch</label>
+                          <span className="text-xs font-bold text-violet-600">
+                            {voice.pitch < 0.9 ? 'Deep' : voice.pitch < 1.05 ? 'Natural' : 'High'} ({voice.pitch.toFixed(2)})
+                          </span>
+                        </div>
+                        <input type="range" min="0.5" max="1.5" step="0.05"
+                          value={voice.pitch} onChange={e => voice.setPitch(parseFloat(e.target.value))}
+                          className="w-full accent-violet-600 h-2 rounded-full cursor-pointer" />
+                      </div>
+
+                      {/* Browser voice selector */}
+                      {voice.ttsProvider === 'browser' && (
+                        <div>
+                          <label className="text-xs font-bold text-stone-500 uppercase mb-2 block">Browser Voice</label>
+                          <select id="voice-selector" value={voice.selectedVoiceURI || ''}
+                            onChange={e => voice.setSelectedVoiceURI(e.target.value || null)} className="input-field">
+                            <option value="">âœ¨ Auto â€” best Malayalam voice</option>
+                            {availableVoices.map(v => (
+                              <option key={v.voiceURI} value={v.voiceURI}>
+                                {v.name} ({v.lang}){v.lang.startsWith('ml') ? ' âœ“ Malayalam' : ''}
+                              </option>
+                            ))}
+                          </select>
+                          {availableVoices.filter(v => v.lang.startsWith('ml')).length === 0 && (
+                            <p className="text-xs text-amber-600 mt-1.5">
+                              âš ï¸ No Malayalam voice on this device. For best results, install a Malayalam TTS pack:
+                              Windows Settings â†’ Time &amp; Language â†’ Speech â†’ Add voices â†’ Malayalam.
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Item-add toggle */}
+                      <div className="flex items-center justify-between p-3 bg-stone-50 dark:bg-stone-700/50 rounded-xl">
+                        <div>
+                          <p className="text-sm font-medium text-stone-700 dark:text-stone-300">Announce item added to cart</p>
+                          <p className="text-xs text-stone-400">&quot;à´šàµ‡àµ¼à´¤àµà´¤àµ&quot; when a product is added</p>
+                        </div>
+                        <button onClick={() => voice.setAnnounceItemAdd(!voice.announceItemAdd)}
+                          className={clsx('w-11 h-6 rounded-full relative transition-all', voice.announceItemAdd ? 'bg-violet-600' : 'bg-stone-300 dark:bg-stone-600')}>
+                          <div className={clsx('absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all', voice.announceItemAdd ? 'left-6' : 'left-1')} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Google WaveNet API key card */}
+                <div className={clsx('card p-6 space-y-4 border-2 transition-colors',
+                  voice.ttsProvider === 'google' ? 'border-violet-300 dark:border-violet-700' : 'border-transparent')}>
+                  <div className="flex items-center gap-2">
+                    <Key className="w-4 h-4 text-violet-600" />
+                    <h3 className="font-bold text-stone-800 dark:text-stone-100 text-sm">Google Cloud TTS â€” API Key</h3>
+                    {voice.googleApiKey && (
+                      <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                        âœ“ Configured
+                      </span>
                     )}
                   </div>
-
-                  {/* Item-add toggle */}
-                  <div className="flex items-center justify-between p-3 bg-stone-50 dark:bg-stone-700/50 rounded-xl">
-                    <div>
-                      <p className="text-sm font-medium text-stone-700 dark:text-stone-300">Announce item added to cart</p>
-                      <p className="text-xs text-stone-400">"ചേർത്തു" when a product is added</p>
+                  <p className="text-xs text-stone-500">
+                    Get a free API key at <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" className="text-violet-600 underline">console.cloud.google.com</a> â†’ Enable &quot;Cloud Text-to-Speech API&quot;.
+                    Uses <strong>ml-IN-Wavenet-A</strong> (female, ultra-realistic Kerala accent). Key is stored only on this device.
+                  </p>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type={showApiKey ? 'text' : 'password'}
+                        value={googleKeyDraft}
+                        onChange={e => setGoogleKeyDraft(e.target.value)}
+                        placeholder="AIzaSy..."
+                        className="input-field pr-10 font-mono text-sm"
+                      />
+                      <button type="button" onClick={() => setShowApiKey(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600">
+                        {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
                     </div>
-                    <button
-                      onClick={() => voice.setAnnounceItemAdd(!voice.announceItemAdd)}
-                      className={clsx('w-11 h-6 rounded-full relative transition-all', voice.announceItemAdd ? 'bg-violet-600' : 'bg-stone-300 dark:bg-stone-600')}
-                    >
-                      <div className={clsx('absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all', voice.announceItemAdd ? 'left-6' : 'left-1')} />
+                    <button onClick={saveGoogleKey}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold transition-colors">
+                      <Save className="w-3.5 h-3.5" /> Save
                     </button>
                   </div>
+                  <button onClick={testGoogleVoice} disabled={testingGoogle || !voice.googleApiKey}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-400 text-sm font-bold hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                    {testingGoogle ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mic className="w-4 h-4" />}
+                    Test Google WaveNet Voice
+                  </button>
                 </div>
 
                 {/* Test Buttons */}
                 <div className="card p-6 space-y-3">
-                  <h3 className="font-bold text-stone-800 dark:text-stone-100 text-sm">Test Announcements</h3>
-                  <p className="text-xs text-stone-400">Click a button below to hear a sample announcement using your current settings.</p>
+                  <h3 className="font-bold text-stone-800 dark:text-stone-100 text-sm">ðŸŽ™ Test Announcements</h3>
+                  <p className="text-xs text-stone-400">Hear sample announcements using your current voice settings.</p>
                   <div className="grid grid-cols-2 gap-2">
                     {[
-                      { label: '🯧 Bill Generated', action: () => announceBillGenerated(getVoiceOpts(voice)) },
-                      { label: '💰 Total Amount', action: () => announceTotalAmount(540, getVoiceOpts(voice)) },
-                      { label: '📱 UPI Payment', action: () => announcePaymentReceived('upi', 540, getVoiceOpts(voice)) },
-                      { label: '💵 Cash Payment', action: () => announcePaymentReceived('cash', 540, getVoiceOpts(voice)) },
-                      { label: '🔄 Change Due', action: () => announceChange(60, getVoiceOpts(voice)) },
-                      { label: '🙏 Thank You', action: () => announceThankYou(getVoiceOpts(voice)) },
-                      { label: '🛒 Full Bill Demo', action: () => testPhrase('ബിൽ വിജയകരമായി തയ്യാറാക്കി. ആകെ തുക അഞ്ഞൂറ്റി നാൽപ്പത് രൂപ. ക്യാഷ് വഴി അഞ്ഞൂറ്റി നാൽപ്പത് രൂപ അടച്ചു. നന്ദി, വീണ്ടും വരിക', getVoiceOpts(voice)) },
-                      { label: '⏹ Stop', action: () => stopSpeech(), style: 'text-red-600 dark:text-red-400 border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 hover:bg-red-100' },
+                      { label: 'ðŸ§¾ Bill Generated', action: () => announceBillGenerated(getVoiceOpts(voice)) },
+                      { label: 'ðŸ’° Total: â‚¹540', action: () => announceTotalAmount(540, getVoiceOpts(voice)) },
+                      { label: 'ðŸ“± UPI Payment', action: () => announcePaymentReceived('upi', 540, getVoiceOpts(voice)) },
+                      { label: 'ðŸ’µ Cash Payment', action: () => announcePaymentReceived('cash', 540, getVoiceOpts(voice)) },
+                      { label: 'ðŸ”„ Change: â‚¹60', action: () => announceChange(60, getVoiceOpts(voice)) },
+                      { label: 'ðŸ™ Thank You', action: () => announceThankYou(getVoiceOpts(voice)) },
+                      { label: 'ðŸ›’ Full Bill Demo', action: () => testPhrase('à´¬à´¿àµ½ à´µà´¿à´œà´¯à´•à´°à´®à´¾à´¯à´¿ à´¤à´¯àµà´¯à´¾à´±à´¾à´•àµà´•à´¿. à´†à´•àµ† à´¤àµà´• à´…à´žàµà´žàµ‚à´±àµà´±à´¿ à´¨à´¾àµ½à´ªàµà´ªà´¤àµ à´°àµ‚à´ª. à´«àµ‹àµºâ€Œà´ªàµ‡ à´µà´´à´¿ à´…à´žàµà´žàµ‚à´±àµà´±à´¿ à´¨à´¾àµ½à´ªàµà´ªà´¤àµ à´°àµ‚à´ª à´…à´Ÿà´šàµà´šàµ. à´¨à´¨àµà´¦à´¿, à´µàµ€à´£àµà´Ÿàµà´‚ à´µà´°à´¿à´•', getVoiceOpts(voice)) },
+                      { label: 'â¹ Stop', action: () => stopSpeech(), style: 'text-red-600 dark:text-red-400 border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 hover:bg-red-100' },
                     ].map(({ label, action, style }) => (
-                      <button
-                        key={label}
-                        onClick={action}
-                        disabled={!voice.voiceEnabled && label !== '⏹ Stop'}
-                        className={clsx(
-                          'px-3 py-2.5 rounded-xl text-xs font-bold border transition-all disabled:opacity-40 disabled:cursor-not-allowed text-left',
+                      <button key={label} onClick={action}
+                        disabled={!voice.voiceEnabled && label !== 'â¹ Stop'}
+                        className={clsx('px-3 py-2.5 rounded-xl text-xs font-bold border transition-all disabled:opacity-40 disabled:cursor-not-allowed text-left',
                           style || 'bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-400 border-violet-200 dark:border-violet-800 hover:bg-violet-100 dark:hover:bg-violet-900/40'
-                        )}
-                      >
+                        )}>
                         {label}
                       </button>
                     ))}
@@ -576,7 +677,7 @@ export default function SettingsPage() {
               </div>
             )}
 
-            {/* ─── Data Management ─── */}
+            {/* â”€â”€â”€ Data Management â”€â”€â”€ */}
             {activeTab === 'data' && (
               <div className="space-y-4">
                 <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-2xl p-4 flex items-start gap-3">

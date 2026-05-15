@@ -7,6 +7,7 @@ import { clsx } from 'clsx';
 import { useState } from 'react';
 import Sidebar from '@/components/shared/Sidebar';
 import Topbar from '@/components/shared/Topbar';
+import { useRegisterVoiceSettings } from '@/hooks/useVoiceSettings';
 
 // Pages that staff (non-admin) cannot access — redirect to /billing
 const ADMIN_ONLY_PATHS = [
@@ -24,6 +25,9 @@ const ADMIN_ONLY_PATHS = [
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // 🔊 Register voice settings with TTS engine (runs on every settings change)
+  useRegisterVoiceSettings();
 
   // hydrated = persist store has loaded from localStorage
   const hydrated = useAuthHydrated();

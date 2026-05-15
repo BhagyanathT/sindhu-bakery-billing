@@ -1,32 +1,35 @@
 'use client';
 // src/components/VoiceStatusWidget.tsx
-// Floating animated widget that shows current speech status in billing pages
+// ── Premium Malayalam Voice Announcement Widget ──
+// Shows animated waveform + current phrase while speaking
+// Supports Google WaveNet badge and browser TTS badge
 
 import { useEffect, useState } from 'react';
-import { Volume2, VolumeX } from 'lucide-react';
-import { onSpeechChange, stopSpeech } from '@/lib/malayalamVoice';
+import { Volume2, VolumeX, Mic, Wifi } from 'lucide-react';
+import { onSpeechChange, stopSpeech, type SpeechEvent } from '@/lib/malayalamVoice';
 import { useVoiceSettings } from '@/hooks/useVoiceSettings';
 import { clsx } from 'clsx';
 
+// ── Waveform bar heights (20 bars, varied for organic look) ──────────────────
+const BAR_HEIGHTS = [4, 7, 11, 16, 22, 18, 14, 20, 25, 18, 22, 15, 20, 12, 18, 9, 14, 8, 5, 7];
+
 export default function VoiceStatusWidget() {
   const { voiceEnabled, setVoiceEnabled } = useVoiceSettings();
-  const [currentText, setCurrentText] = useState<string | null>(null);
+  const [event, setEvent] = useState<SpeechEvent>({ text: null, provider: null });
   const [visible, setVisible] = useState(false);
   const [hideTimer, setHideTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
 
-  // Subscribe to speech events
   useEffect(() => {
-    const unsub = onSpeechChange((text) => {
-      if (text) {
-        setCurrentText(text);
+    const unsub = onSpeechChange((ev) => {
+      if (ev.text) {
+        setEvent(ev);
         setVisible(true);
         if (hideTimer) clearTimeout(hideTimer);
       } else {
-        // Keep visible for 1.5s after speech ends
         const t = setTimeout(() => {
           setVisible(false);
-          setCurrentText(null);
-        }, 1500);
+          setEvent({ text: null, provider: null });
+        }, 1800);
         setHideTimer(t);
       }
     });
@@ -37,72 +40,101 @@ export default function VoiceStatusWidget() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleToggle = () => {
-    if (voiceEnabled && currentText) stopSpeech();
-    setVoiceEnabled(!voiceEnabled);
-  };
-
-  // ── Waveform bars animation ──────────────────────────────────────────────
-  const bars = [3, 5, 7, 5, 4, 6, 8, 5, 3, 6];
+  const isSpeaking = !!event.text && voiceEnabled;
 
   return (
-    <div
-      className={clsx(
-        'fixed bottom-20 right-4 z-[60] flex items-center gap-2 transition-all duration-500 no-print',
-        // Always show mute button; expand when speaking
-        visible && voiceEnabled ? 'opacity-100' : 'opacity-0 pointer-events-none'
-      )}
-      style={{ transform: visible && voiceEnabled ? 'translateY(0)' : 'translateY(10px)' }}
-    >
-      {/* Main speaking card */}
-      <div className="flex items-center gap-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-2xl px-3 py-2 shadow-xl shadow-violet-500/30 border border-violet-400/30 backdrop-blur-sm max-w-[220px]">
-        {/* Waveform */}
-        <div className="flex items-center gap-0.5 flex-shrink-0">
-          {bars.map((h, i) => (
-            <div
-              key={i}
-              className="bg-white/80 rounded-full"
-              style={{
-                width: '2px',
-                height: `${h}px`,
-                animation: currentText
-                  ? `voiceBar 0.6s ease-in-out ${i * 0.07}s infinite alternate`
-                  : 'none',
-                opacity: currentText ? 1 : 0.3,
-              }}
-            />
-          ))}
+    <>
+      {/* Animated waveform card — only when speaking */}
+      <div
+        className={clsx(
+          'fixed bottom-20 right-4 z-[60] transition-all duration-500 ease-out no-print',
+          isSpeaking ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-3 scale-95 pointer-events-none'
+        )}
+      >
+        <div className="relative flex items-center gap-3 rounded-2xl px-4 py-3 shadow-2xl border border-white/10 overflow-hidden"
+          style={{
+            background: 'linear-gradient(135deg, #4c1d95 0%, #6d28d9 50%, #7c3aed 100%)',
+            boxShadow: '0 8px 32px rgba(109, 40, 217, 0.45), 0 0 0 1px rgba(255,255,255,0.08)',
+            minWidth: 220,
+            maxWidth: 280,
+          }}
+        >
+          {/* Glossy reflection */}
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+          <div className="absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-white/10 to-transparent rounded-t-2xl" />
+
+          {/* Mic icon */}
+          <div className="relative flex-shrink-0 w-8 h-8 rounded-xl bg-white/15 flex items-center justify-center">
+            <Mic className="w-4 h-4 text-white" />
+            {/* Pulse ring */}
+            <span className="absolute inset-0 rounded-xl border border-white/40 animate-ping opacity-60" />
+          </div>
+
+          {/* Waveform + text */}
+          <div className="flex-1 min-w-0">
+            {/* Provider badge */}
+            <div className="flex items-center gap-1.5 mb-1">
+              {event.provider === 'google' ? (
+                <span className="flex items-center gap-1 text-[9px] font-bold text-emerald-300 uppercase tracking-wider">
+                  <Wifi className="w-2.5 h-2.5" />
+                  Google WaveNet
+                </span>
+              ) : (
+                <span className="text-[9px] font-bold text-violet-300 uppercase tracking-wider">
+                  🎙 Malayalam Voice
+                </span>
+              )}
+            </div>
+
+            {/* Animated waveform bars */}
+            <div className="flex items-end gap-[2px] h-6 mb-1">
+              {BAR_HEIGHTS.map((h, i) => (
+                <div
+                  key={i}
+                  className="rounded-full bg-white/80 flex-shrink-0"
+                  style={{
+                    width: '2.5px',
+                    height: isSpeaking ? `${h}px` : '3px',
+                    animation: isSpeaking
+                      ? `voiceBar ${0.4 + (i % 5) * 0.08}s ease-in-out ${i * 0.035}s infinite alternate`
+                      : 'none',
+                    opacity: isSpeaking ? 0.9 : 0.25,
+                    transition: 'height 0.3s ease',
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* Current text (truncated) */}
+            <p className="text-[10px] text-white/90 font-medium truncate leading-none">
+              {event.text || '…'}
+            </p>
+          </div>
         </div>
 
-        {/* Text */}
-        <div className="flex-1 min-w-0">
-          <p className="text-[9px] font-bold text-violet-200 uppercase tracking-wide leading-none mb-0.5">
-            🎙️ Malayalam Voice
-          </p>
-          <p className="text-[10px] text-white font-medium truncate leading-tight">
-            {currentText || 'Speaking…'}
-          </p>
-        </div>
+        {/* Keyframes */}
+        <style>{`
+          @keyframes voiceBar {
+            from { transform: scaleY(0.35); }
+            to   { transform: scaleY(1.0); }
+          }
+        `}</style>
       </div>
-
-      {/* Keyframe styles */}
-      <style>{`
-        @keyframes voiceBar {
-          from { transform: scaleY(0.4); }
-          to   { transform: scaleY(1.4); }
-        }
-      `}</style>
-    </div>
+    </>
   );
 }
 
-/** Small persistent mute/unmute button — always visible in corner of billing */
+// ─── Compact Mute/Unmute Button ───────────────────────────────────────────────
 export function VoiceMuteButton() {
   const { voiceEnabled, setVoiceEnabled } = useVoiceSettings();
   const [speaking, setSpeaking] = useState(false);
+  const [provider, setProvider] = useState<'google' | 'browser' | null>(null);
 
   useEffect(() => {
-    const unsub = onSpeechChange((text) => setSpeaking(!!text));
+    const unsub = onSpeechChange((ev) => {
+      setSpeaking(!!ev.text);
+      setProvider(ev.provider);
+    });
     return () => { unsub(); };
   }, []);
 
@@ -118,17 +150,21 @@ export function VoiceMuteButton() {
         'flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all border no-print',
         voiceEnabled
           ? speaking
-            ? 'bg-violet-600 text-white border-violet-500 shadow-md shadow-violet-500/30 animate-pulse'
-            : 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 border-violet-200 dark:border-violet-800 hover:bg-violet-200'
+            ? 'bg-violet-600 text-white border-violet-500 shadow-lg shadow-violet-500/30'
+            : 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 border-violet-200 dark:border-violet-800 hover:bg-violet-200 dark:hover:bg-violet-900/50'
           : 'bg-stone-100 dark:bg-stone-800 text-stone-400 border-stone-200 dark:border-stone-700 hover:bg-stone-200 dark:hover:bg-stone-700'
       )}
     >
       {voiceEnabled ? (
-        <Volume2 className="w-3.5 h-3.5" />
+        <Volume2 className={clsx('w-3.5 h-3.5', speaking && 'animate-pulse')} />
       ) : (
         <VolumeX className="w-3.5 h-3.5" />
       )}
-      <span className="hidden sm:inline">{voiceEnabled ? 'Voice ON' : 'Muted'}</span>
+      <span className="hidden sm:inline">
+        {voiceEnabled
+          ? (speaking ? (provider === 'google' ? '✨ WaveNet' : 'Speaking…') : 'Voice ON')
+          : 'Muted'}
+      </span>
     </button>
   );
 }
