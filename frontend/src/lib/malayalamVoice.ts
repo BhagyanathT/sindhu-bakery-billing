@@ -78,6 +78,62 @@ function twoDigits(n: number): string {
   return TENS_ONE[n] || (TENS[Math.floor(n / 10)] + ' ' + ONES[n % 10]);
 }
 
+function applyMalayalamSlang(text: string): string {
+  let res = text;
+  // Hundreds joining
+  res = res.replace(/നൂറ്റി അ/g, 'നൂറ്റ');
+  res = res.replace(/നൂറ്റി ആ/g, 'നൂറ്റാ');
+  res = res.replace(/നൂറ്റി എ/g, 'നൂറ്റെ');
+  res = res.replace(/നൂറ്റി ഏ/g, 'നൂറ്റേ');
+  res = res.replace(/നൂറ്റി ഒ/g, 'നൂറ്റൊ');
+  res = res.replace(/നൂറ്റി ഓ/g, 'നൂറ്റോ');
+  
+  // Specific thousands joining
+  res = res.replace(/ആയിരത്തി ഇരുനൂറ്/g, 'ആയിരത്തിരുന്നൂറ്');
+  res = res.replace(/ആയിരത്തി അഞ്ഞൂറ്/g, 'ആയിരത്തഞ്ഞൂറ്');
+  res = res.replace(/ആയിരത്തി എണ്ണൂറ്/g, 'ആയിരത്തെണ്ണൂറ്');
+  
+  // Generic thousands vowel joining
+  res = res.replace(/ആയിരത്തി അ/g, 'ആയിരത്ത');
+  res = res.replace(/ആയിരത്തി ആ/g, 'ആയിരത്താ');
+  res = res.replace(/ആയിരത്തി എ/g, 'ആയിരത്തെ');
+  res = res.replace(/ആയിരത്തി ഒ/g, 'ആയിരത്തൊ');
+
+  // Lakhs
+  res = res.replace(/ലക്ഷത്തി അ/g, 'ലക്ഷത്ത');
+  res = res.replace(/ലക്ഷത്തി എ/g, 'ലക്ഷത്തെ');
+  res = res.replace(/ലക്ഷത്തി ഒ/g, 'ലക്ഷത്തൊ');
+
+  return res;
+}
+
+function getThousandsWord(k: number): string {
+  if (k === 1) return 'ആയിരം';
+  if (k === 2) return 'രണ്ടായിരം';
+  if (k === 3) return 'മൂന്നായിരം';
+  if (k === 4) return 'നാലായിരം';
+  if (k === 5) return 'അയ്യായിരം';
+  if (k === 6) return 'ആറായിരം';
+  if (k === 7) return 'ഏഴായിരം';
+  if (k === 8) return 'എട്ടായിരം';
+  if (k === 9) return 'ഒൻപതിനായിരം';
+  if (k === 10) return 'പത്തായിരം';
+  
+  const base = twoDigits(k);
+  if (base.endsWith('ത്')) return base.slice(0, -1) + 'തിനായിരം';
+  if (base.endsWith('ഒന്ന്')) return base.slice(0, -4) + 'ഒന്നായിരം';
+  if (base.endsWith('രണ്ട്')) return base.slice(0, -4) + 'രണ്ടായിരം';
+  if (base.endsWith('മൂന്ന്')) return base.slice(0, -5) + 'മൂന്നായിരം';
+  if (base.endsWith('നാല്')) return base.slice(0, -4) + 'നാലായിരം';
+  if (base.endsWith('അഞ്ച്')) return base.slice(0, -4) + 'അഞ്ചായിരം';
+  if (base.endsWith('ആറ്')) return base.slice(0, -3) + 'ആറായിരം';
+  if (base.endsWith('ഏഴ്')) return base.slice(0, -3) + 'ഏഴായിരം';
+  if (base.endsWith('എട്ട്')) return base.slice(0, -4) + 'എട്ടായിരം';
+  if (base.endsWith('ഒൻപത്')) return base.slice(0, -5) + 'ഒൻപതിനായിരം';
+  
+  return base + ' ആയിരം';
+}
+
 export function amountToMalayalam(n: number, asAdjective = false): string {
   if (n === null || n === undefined || isNaN(n)) return '';
   const amount = Math.round(n);
@@ -100,25 +156,15 @@ export function amountToMalayalam(n: number, asAdjective = false): string {
   const k_amount = amount % 100000;
   if (k_amount >= 10000) {
     const ten_k = Math.floor(k_amount / 1000);
-    parts.push(twoDigits(ten_k) + (rem > 0 ? ' ആയിരത്തി' : ' ആയിരം'));
+    const t_word = getThousandsWord(ten_k);
+    parts.push(rem > 0 ? t_word.replace(/ആയിരം$/, 'ആയിരത്തി') : t_word);
   } else if (k_amount >= 1000) {
     const thousands = Math.floor(k_amount / 1000);
-    if (thousands === 1) parts.push(rem > 0 ? 'ആയിരത്തി' : 'ആയിരം');
-    else {
-      const t_word = thousands === 2 ? 'രണ്ടായിരം' :
-                     thousands === 3 ? 'മൂന്നായിരം' :
-                     thousands === 4 ? 'നാലായിരം' :
-                     thousands === 5 ? 'അയ്യായിരം' :
-                     thousands === 6 ? 'ആറായിരം' :
-                     thousands === 7 ? 'ഏഴായിരം' :
-                     thousands === 8 ? 'എട്ടായിരം' :
-                     thousands === 9 ? 'ഒൻപതിനായിരം' :
-                     twoDigits(thousands) + ' ആയിരം';
-      parts.push(rem > 0 ? t_word.replace(/ആയിരം$/, 'ആയിരത്തി') : t_word);
-    }
+    const t_word = getThousandsWord(thousands);
+    parts.push(rem > 0 ? t_word.replace(/ആയിരം$/, 'ആയിരത്തി') : t_word);
   }
 
-  if (rem === 0) return parts.join(' ').trim();
+  if (rem === 0) return applyMalayalamSlang(parts.join(' ').trim());
 
   const h = Math.floor(rem / 100);
   const rest = rem % 100;
@@ -128,7 +174,7 @@ export function amountToMalayalam(n: number, asAdjective = false): string {
   }
   if (rest > 0) parts.push(twoDigits(rest));
 
-  return parts.join(' ').trim();
+  return applyMalayalamSlang(parts.join(' ').trim());
 }
 
 // ─── Payment Method Labels ─────────────────────────────────────────────────────
@@ -455,7 +501,7 @@ export function announceBillGenerated(opts: VoiceOptions = {}) {
 /** "ആകെ [amount] രൂപ ആകും" */
 export function announceTotalAmount(amount: number, opts: VoiceOptions = {}) {
   const words = amountToMalayalam(amount, true);
-  speak(`ആകെ ${words} രൂപ ആകും.`, opts);
+  speak(`ആകെ ${words} രൂപാകും.`, opts);
 }
 
 /** Kerala style: "ക്യാഷ് [amount] രൂപ കിട്ടി" */
@@ -467,21 +513,21 @@ export function announcePaymentReceived(method: string, amount: number, opts: Vo
 
 /** "യൂ പി ഐ സക്സസ്" */
 export function announceUPISuccess(opts: VoiceOptions = {}) {
-  speak('യൂ പി ഐ സക്സസ്.', opts, 120);
+  speak('യൂ പി ഐ സക്സസ്സായിട്ടുണ്ട്.', opts, 120);
 }
 
 /** "ബാക്കി [amount] രൂപ തിരിച്ചു കൊടുക്കണം" */
 export function announceChange(amount: number, opts: VoiceOptions = {}) {
   if (amount <= 0) return;
   const words = amountToMalayalam(amount, true);
-  speak(`ബാക്കി ${words} രൂപ തിരിച്ചു കൊടുക്കണം.`, opts, 120);
+  speak(`ബാക്കി ${words} രൂപ കൊടുക്കണം.`, opts, 120);
 }
 
 /** "കൊടുക്കാൻ ബാക്കി [amount] രൂപ" */
 export function announcePendingAmount(amount: number, opts: VoiceOptions = {}) {
   if (amount <= 0) return;
   const words = amountToMalayalam(amount, true);
-  speak(`കൊടുക്കാൻ ബാക്കി ${words} രൂപ ഉണ്ട്.`, opts, 120);
+  speak(`കൊടുക്കാൻ ബാക്കി ${words} രൂപയുണ്ട്.`, opts, 120);
 }
 
 /** "നന്ദി, വീണ്ടും വരൂ" */
