@@ -302,9 +302,9 @@ function speakWithBrowser(job: SpeechJob): Promise<void> {
   });
 }
 
-// ─── Provider: Backend TTS Proxy (Google Translate via server — no CORS) ──────
+// ─── Provider: Google Translate Free TTS (Direct Audio Tag) ───────────────────
 
-function speakWithBackendProxy(job: SpeechJob): Promise<void> {
+function speakWithGoogleTranslateFree(job: SpeechJob): Promise<void> {
   return new Promise((resolve) => {
     let resolved = false;
     const safeResolve = () => { if (!resolved) { resolved = true; resolve(); } };
@@ -313,8 +313,8 @@ function speakWithBackendProxy(job: SpeechJob): Promise<void> {
       const cleanText = job.text.replace(/<[^>]+>/g, '').trim();
       if (!cleanText) return safeResolve();
 
-      const backendBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-      const url = `${backendBase}/api/tts?text=${encodeURIComponent(cleanText)}&lang=ml`;
+      // Using client=tw-ob allows direct playback via Audio tag without CORS/403
+      const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText)}&tl=ml&client=tw-ob`;
 
       const audio = new Audio(url);
       audio.volume = Math.max(0, Math.min(1, job.opts.volume ?? 1));
@@ -322,8 +322,7 @@ function speakWithBackendProxy(job: SpeechJob): Promise<void> {
       audio.oncanplaythrough = () => { audio.play().catch(safeResolve); };
       audio.onended  = safeResolve;
       audio.onerror  = () => {
-        console.warn('[Voice] Backend proxy failed, falling back to browser TTS');
-        // Fall back to browser TTS
+        console.warn('[Voice] Direct Google TTS failed, falling back to browser TTS');
         speakWithBrowser(job).then(safeResolve);
       };
 
@@ -392,9 +391,9 @@ async function processQueue() {
   }
 
   if (!usedGoogle) {
-    // Use backend proxy (Google Translate TTS via server — no CORS)
+    // Direct Google Translate TTS (bypasses CORS via Audio tag)
     notifyListeners({ text: job.text, provider: 'browser' });
-    await speakWithBackendProxy(job);
+    await speakWithGoogleTranslateFree(job);
   }
 
   notifyListeners({ text: null, provider: null });
