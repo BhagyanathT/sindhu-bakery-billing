@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import { useState, useEffect } from 'react';
 import { Save, Building2, CreditCard, Shield, Palette, Database, Trash2, AlertTriangle, LogOut, Loader2, Users, ShoppingBag, Calendar, ClipboardList, Wallet, X, DollarSign, UserPlus, Eye, EyeOff, Volume2, Wifi, WifiOff, Mic, Key, ChevronDown, ChevronUp } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -52,18 +52,48 @@ export default function SettingsPage() {
   const saveGoogleKey = () => {
     voice.setGoogleApiKey(googleKeyDraft.trim());
     onApiKeyChange();
-    toast.success(googleKeyDraft.trim() ? 'âœ… Google API key saved!' : 'ðŸ—‘ API key cleared');
+    toast.success(googleKeyDraft.trim() ? '✅ Google API key saved!' : '🗑️ API key cleared');
   };
 
   const testGoogleVoice = async () => {
     if (!voice.googleApiKey) { toast.error('Enter and save your Google API key first'); return; }
     setTestingGoogle(true);
+    const toastId = toast.loading('Testing Google WaveNet voice...');
     try {
       const prev = voice.ttsProvider;
       voice.setTtsProvider('google');
+      
+      // We call the API directly here for a diagnostic test
+      const res = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${voice.googleApiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          input: { text: 'അമ്പത്തൊന്ന്' },
+          voice: { languageCode: 'ml-IN', name: 'ml-IN-Wavenet-A' },
+          audioConfig: { audioEncoding: 'MP3' }
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        const msg = err?.error?.message || 'Unknown error';
+        const status = res.status;
+        console.error('[VoiceTest] Google API Error:', status, err);
+        
+        if (status === 403) {
+          toast.error(`❌ Google API Key issue: ${msg}. Check if Cloud TTS API is enabled and Billing is active.`, { id: toastId, duration: 6000 });
+        } else {
+          toast.error(`❌ Google API Error (${status}): ${msg}`, { id: toastId, duration: 6000 });
+        }
+        return;
+      }
+
+      toast.success('✅ Connection successful! Playing voice...', { id: toastId });
       await new Promise(r => setTimeout(r, 100));
-      testPhrase('à´†à´•àµ† à´¤àµà´• à´…à´žàµà´žàµ‚à´±àµà´±à´¿ à´¨à´¾àµ½à´ªàµà´ªà´¤àµ à´°àµ‚à´ª. à´¨à´¨àµà´¦à´¿, à´µàµ€à´£àµà´Ÿàµà´‚ à´µà´°à´¿à´•', getVoiceOpts(voice));
+      testPhrase('ആകെ തുക അഞ്ഞൂറ്റമ്പത് രൂപ. നന്ദി, വീണ്ടും വരിക', getVoiceOpts(voice));
       if (prev !== 'google') setTimeout(() => voice.setTtsProvider(prev), 4000);
+    } catch (e: any) {
+      toast.error(`❌ Network Error: ${e.message}`, { id: toastId });
     } finally { setTestingGoogle(false); }
   };
 
