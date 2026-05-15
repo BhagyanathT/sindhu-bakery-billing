@@ -1,11 +1,13 @@
 'use client';
-import { useState } from 'react';
-import { Save, Building2, CreditCard, Shield, Palette, Database, Trash2, AlertTriangle, LogOut, Loader2, Users, ShoppingBag, Calendar, ClipboardList, Wallet, X, DollarSign, UserPlus, Eye, EyeOff } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Save, Building2, CreditCard, Shield, Palette, Database, Trash2, AlertTriangle, LogOut, Loader2, Users, ShoppingBag, Calendar, ClipboardList, Wallet, X, DollarSign, UserPlus, Eye, EyeOff, Volume2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '@/store/authStore';
 import { useTheme } from 'next-themes';
 import api from '@/lib/api';
 import { clsx } from 'clsx';
+import { useVoiceSettings, getVoiceOpts } from '@/hooks/useVoiceSettings';
+import { testPhrase, getAvailableVoices, stopSpeech, announceTotalAmount, announcePaymentReceived, announceChange, announceThankYou, announceBillGenerated } from '@/lib/malayalamVoice';
 
 const TABS = [
   { id: 'company',    label: 'Company',    icon: Building2 },
@@ -13,6 +15,7 @@ const TABS = [
   { id: 'appearance',label: 'Appearance', icon: Palette },
   { id: 'security',  label: 'Security',   icon: Shield },
   { id: 'users',     label: 'Users',      icon: Users },
+  { id: 'voice',     label: 'Voice',      icon: Volume2 },
   { id: 'data',      label: 'Data',       icon: Database },
 ];
 
@@ -29,6 +32,19 @@ const WIPE_ITEMS = [
 export default function SettingsPage() {
   const { user, logout } = useAuthStore();
   const { theme, setTheme } = useTheme();
+
+  // ── Voice settings ─────────────────────────────────────────────────────────
+  const voice = useVoiceSettings();
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    const load = () => setAvailableVoices(getAvailableVoices());
+    // Voices may load asynchronously in Chrome
+    window.speechSynthesis.onvoiceschanged = load;
+    load();
+    return () => { window.speechSynthesis.onvoiceschanged = null; };
+  }, []);
 
   const [activeTab, setActiveTab] = useState('company');
   const [wiping, setWiping]       = useState<string|null>(null);
@@ -423,6 +439,140 @@ export default function SettingsPage() {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ─── Voice ─── */}
+            {activeTab === 'voice' && (
+              <div className="space-y-4">
+                {/* Info banner */}
+                <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/50 rounded-2xl p-4 flex items-start gap-3">
+                  <Volume2 className="w-5 h-5 text-violet-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-bold text-violet-700 dark:text-violet-400">Malayalam Voice Announcements</p>
+                    <p className="text-xs text-violet-600 dark:text-violet-500 mt-0.5">
+                      Speaks bill details aloud when a bill is saved — like a supermarket POS system.
+                      Uses your device’s built-in speech engine (Chrome recommended for best Malayalam support).
+                    </p>
+                  </div>
+                </div>
+
+                {/* Master Enable */}
+                <div className="card p-6 space-y-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-bold text-stone-800 dark:text-stone-100">Voice Announcements</p>
+                      <p className="text-xs text-stone-500 mt-0.5">ഭാഷണം / പ്രകടന {voice.voiceEnabled ? '— സക്രിയമാണ്‍' : '— നിഷ്ക്രിയമാണ്‍'}</p>
+                    </div>
+                    <button
+                      id="voice-enable-toggle"
+                      onClick={() => { if (voice.voiceEnabled) stopSpeech(); voice.setVoiceEnabled(!voice.voiceEnabled); }}
+                      className={clsx('w-12 h-6 rounded-full relative transition-all', voice.voiceEnabled ? 'bg-violet-600' : 'bg-stone-300 dark:bg-stone-600')}
+                    >
+                      <div className={clsx('absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all', voice.voiceEnabled ? 'left-7' : 'left-1')} />
+                    </button>
+                  </div>
+
+                  {/* Volume */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs font-bold text-stone-500 uppercase">Volume</label>
+                      <span className="text-xs font-bold text-violet-600">{Math.round(voice.volume * 100)}%</span>
+                    </div>
+                    <input
+                      id="voice-volume-slider"
+                      type="range" min="0" max="1" step="0.05"
+                      value={voice.volume}
+                      onChange={e => voice.setVolume(parseFloat(e.target.value))}
+                      className="w-full accent-violet-600 h-2 rounded-full cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Rate */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs font-bold text-stone-500 uppercase">Speech Speed</label>
+                      <span className="text-xs font-bold text-violet-600">
+                        {voice.rate < 0.75 ? 'Slow' : voice.rate < 1.0 ? 'Normal' : voice.rate < 1.2 ? 'Fast' : 'Very Fast'}
+                        {' '}({voice.rate.toFixed(2)}×)
+                      </span>
+                    </div>
+                    <input
+                      id="voice-rate-slider"
+                      type="range" min="0.5" max="1.5" step="0.05"
+                      value={voice.rate}
+                      onChange={e => voice.setRate(parseFloat(e.target.value))}
+                      className="w-full accent-violet-600 h-2 rounded-full cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Voice Selector */}
+                  <div>
+                    <label className="text-xs font-bold text-stone-500 uppercase mb-2 block">Voice / Language</label>
+                    <select
+                      id="voice-selector"
+                      value={voice.selectedVoiceURI || ''}
+                      onChange={e => voice.setSelectedVoiceURI(e.target.value || null)}
+                      className="input-field"
+                    >
+                      <option value="">✨ Auto — best Malayalam voice</option>
+                      {availableVoices.map(v => (
+                        <option key={v.voiceURI} value={v.voiceURI}>
+                          {v.name} ({v.lang}){v.lang.startsWith('ml') ? ' ✓ Malayalam' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {availableVoices.filter(v => v.lang.startsWith('ml')).length === 0 && (
+                      <p className="text-xs text-amber-600 mt-1.5">
+                        ⚠️ No Malayalam voice found on this device. Install a Malayalam TTS pack in Windows Settings → Time &amp; Language → Speech for best results.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Item-add toggle */}
+                  <div className="flex items-center justify-between p-3 bg-stone-50 dark:bg-stone-700/50 rounded-xl">
+                    <div>
+                      <p className="text-sm font-medium text-stone-700 dark:text-stone-300">Announce item added to cart</p>
+                      <p className="text-xs text-stone-400">"ചേർത്തു" when a product is added</p>
+                    </div>
+                    <button
+                      onClick={() => voice.setAnnounceItemAdd(!voice.announceItemAdd)}
+                      className={clsx('w-11 h-6 rounded-full relative transition-all', voice.announceItemAdd ? 'bg-violet-600' : 'bg-stone-300 dark:bg-stone-600')}
+                    >
+                      <div className={clsx('absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all', voice.announceItemAdd ? 'left-6' : 'left-1')} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Test Buttons */}
+                <div className="card p-6 space-y-3">
+                  <h3 className="font-bold text-stone-800 dark:text-stone-100 text-sm">Test Announcements</h3>
+                  <p className="text-xs text-stone-400">Click a button below to hear a sample announcement using your current settings.</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { label: '🯧 Bill Generated', action: () => announceBillGenerated(getVoiceOpts(voice)) },
+                      { label: '💰 Total Amount', action: () => announceTotalAmount(540, getVoiceOpts(voice)) },
+                      { label: '📱 UPI Payment', action: () => announcePaymentReceived('upi', 540, getVoiceOpts(voice)) },
+                      { label: '💵 Cash Payment', action: () => announcePaymentReceived('cash', 540, getVoiceOpts(voice)) },
+                      { label: '🔄 Change Due', action: () => announceChange(60, getVoiceOpts(voice)) },
+                      { label: '🙏 Thank You', action: () => announceThankYou(getVoiceOpts(voice)) },
+                      { label: '🛒 Full Bill Demo', action: () => testPhrase('ബിൽ വിജയകരമായി തയ്യാറാക്കി. ആകെ തുക അഞ്ഞൂറ്റി നാൽപ്പത് രൂപ. ക്യാഷ് വഴി അഞ്ഞൂറ്റി നാൽപ്പത് രൂപ അടച്ചു. നന്ദി, വീണ്ടും വരിക', getVoiceOpts(voice)) },
+                      { label: '⏹ Stop', action: () => stopSpeech(), style: 'text-red-600 dark:text-red-400 border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 hover:bg-red-100' },
+                    ].map(({ label, action, style }) => (
+                      <button
+                        key={label}
+                        onClick={action}
+                        disabled={!voice.voiceEnabled && label !== '⏹ Stop'}
+                        className={clsx(
+                          'px-3 py-2.5 rounded-xl text-xs font-bold border transition-all disabled:opacity-40 disabled:cursor-not-allowed text-left',
+                          style || 'bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-400 border-violet-200 dark:border-violet-800 hover:bg-violet-100 dark:hover:bg-violet-900/40'
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 

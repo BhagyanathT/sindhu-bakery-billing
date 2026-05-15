@@ -12,6 +12,9 @@ import { useBillingStore, BillingTab } from '@/store/billingStore';
 import toast from 'react-hot-toast';
 import { clsx } from 'clsx';
 import { openWhatsApp, buildInvoiceMsg } from '@/lib/whatsapp';
+import { announceFullBill } from '@/lib/malayalamVoice';
+import { useVoiceSettings, getVoiceOpts } from '@/hooks/useVoiceSettings';
+import VoiceStatusWidget, { VoiceMuteButton } from '@/components/VoiceStatusWidget';
 
 const PAYMENT_METHODS = [
   { id: 'cash',   label: 'Cash',   icon: Banknote },
@@ -478,6 +481,13 @@ export default function BillingPage() {
         toast.success(`✅ Bill ${orderId} saved — ${tab.label}!`);
       });
 
+      // 🔊 Malayalam voice announcement
+      if (voiceSettings.voiceEnabled) {
+        const voiceOpts = getVoiceOpts(voiceSettings);
+        const cashChange = Math.max(0, parseFloat(amountPaid || '0') - grandTotal);
+        announceFullBill({ amount: grandTotal, paymentMethod, change: cashChange, opts: voiceOpts });
+      }
+
       // ✅ Bill saved — WhatsApp is only sent when user explicitly taps the button
 
       // 🔄 Auto-refresh stock counts instantly
@@ -510,6 +520,8 @@ export default function BillingPage() {
     if (p.stock.current <= p.stock.minLevel) return { label: `⚠ ${p.stock.current}`, cls: 'bg-orange-500 text-white' };
     return { label: String(p.stock.current), cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' };
   };
+
+  const voiceSettings = useVoiceSettings();
 
   return (
     <>
@@ -552,6 +564,8 @@ export default function BillingPage() {
         }
       `}</style>
 
+      {/* ── Malayalam Voice Status Widget ── */}
+      <VoiceStatusWidget />
 
       {/* ── Hidden Receipt for Print ── */}
       <div
@@ -995,20 +1009,24 @@ export default function BillingPage() {
                   </span>
                 )}
               </div>
-              {/* GST Toggle */}
-              <button
-                id="gst-toggle"
-                onClick={() => setGstEnabled(!gstEnabled)}
-                className={clsx(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border flex-shrink-0',
-                  gstEnabled
-                    ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800'
-                    : 'bg-stone-200 dark:bg-stone-700 text-stone-500 border-stone-300 dark:border-stone-600'
-                )}
-              >
-                {gstEnabled ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
-                GST {gstEnabled ? 'ON' : 'OFF'}
-              </button>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {/* Voice mute button */}
+                <VoiceMuteButton />
+                {/* GST Toggle */}
+                <button
+                  id="gst-toggle"
+                  onClick={() => setGstEnabled(!gstEnabled)}
+                  className={clsx(
+                    'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border',
+                    gstEnabled
+                      ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800'
+                      : 'bg-stone-200 dark:bg-stone-700 text-stone-500 border-stone-300 dark:border-stone-600'
+                  )}
+                >
+                  {gstEnabled ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
+                  GST {gstEnabled ? 'ON' : 'OFF'}
+                </button>
+              </div>
             </div>
 
             {/* Customer search + phone */}

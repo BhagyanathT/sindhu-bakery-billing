@@ -7,6 +7,9 @@ import toast from 'react-hot-toast';
 import { clsx } from 'clsx';
 import Link from 'next/link';
 import { useAuthStore } from '@/store/authStore';
+import { announceFlashBill } from '@/lib/malayalamVoice';
+import { useVoiceSettings, getVoiceOpts } from '@/hooks/useVoiceSettings';
+import VoiceStatusWidget, { VoiceMuteButton } from '@/components/VoiceStatusWidget';
 
 type PayMethod = 'cash' | 'upi' | 'card';
 type Op = '+' | '-' | '*' | '/';
@@ -54,6 +57,7 @@ function fmtDisplay(s: string): string {
 export default function FlashBillingPage() {
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'admin';
+  const voiceSettings = useVoiceSettings();
   
   // ── Calculator ─────────────────────────────────────────────────────────
   const [current, setCurrent]     = useState('');
@@ -198,6 +202,11 @@ export default function FlashBillingPage() {
       const res = await api.post('/invoices/quick', { total, note: finalNote, paymentMethod: payMethod });
       toast.success(`✅ ₹${total.toLocaleString('en-IN')} saved!`, { icon: '⚡' });
       pressClear(); setNote(''); fetchRecent();
+
+      // 🔊 Malayalam voice announcement
+      if (voiceSettings.voiceEnabled) {
+        announceFlashBill({ amount: total, paymentMethod: payMethod, opts: getVoiceOpts(voiceSettings) });
+      }
       
       // Auto-print removed as requested by user
       // if (res.data?.success && res.data.data?.invoice) {
@@ -422,6 +431,8 @@ export default function FlashBillingPage() {
 
   return (
     <div className="group flex flex-col h-[calc(100dvh-70px)] -m-2 sm:-m-4 overflow-hidden">
+      {/* Malayalam Voice Status Widget */}
+      <VoiceStatusWidget />
       <style>{`
         @media print {
           body { visibility: hidden; background: white; margin: 0; padding: 0; }
@@ -508,6 +519,8 @@ export default function FlashBillingPage() {
             {todayCount} Bill{todayCount !== 1 ? 's' : ''} {isAdmin && `· ₹${todayTotal.toLocaleString('en-IN')}`}
           </p>
         </div>
+        {/* Voice mute button */}
+        <VoiceMuteButton />
       </div>
 
       {/* ── Mobile Tab Switch ── */}
