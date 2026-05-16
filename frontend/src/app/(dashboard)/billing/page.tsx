@@ -12,7 +12,7 @@ import { useBillingStore, BillingTab } from '@/store/billingStore';
 import toast from 'react-hot-toast';
 import { clsx } from 'clsx';
 import { openWhatsApp, buildInvoiceMsg } from '@/lib/whatsapp';
-import { announceFullBill } from '@/lib/malayalamVoice';
+import { announceBillSummary } from '@/lib/malayalamVoice';
 import { useVoiceSettings, getVoiceOpts } from '@/hooks/useVoiceSettings';
 import VoiceStatusWidget, { VoiceMuteButton } from '@/components/VoiceStatusWidget';
 
@@ -341,6 +341,13 @@ export default function BillingPage() {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'F2') { e.preventDefault(); searchRef.current?.focus(); }
       if (e.key === 'F10') { e.preventDefault(); if (cart.length > 0) handleSave(); }
+      
+      // Enter key -> Save Only (no print)
+      if (e.key === 'Enter' && cart.length > 0 && document.activeElement?.id !== 'product-search') {
+        e.preventDefault();
+        handleSaveOnly();
+      }
+
       if (e.key === 'Escape') setSearch('');
     };
     window.addEventListener('keydown', handleKey);
@@ -488,7 +495,7 @@ export default function BillingPage() {
       if (voiceSettings.voiceEnabled) {
         const voiceOpts = getVoiceOpts(voiceSettings);
         const cashChange = Math.max(0, parseFloat(amountPaid || '0') - grandTotal);
-        announceFullBill({ amount: grandTotal, paymentMethod, change: cashChange, opts: voiceOpts });
+        announceBillSummary(grandTotal, paymentMethod, parseFloat(amountPaid || '0'), voiceOpts);
       }
 
       // ✅ Bill saved — WhatsApp is only sent when user explicitly taps the button

@@ -24,6 +24,10 @@ export interface VoiceSettings {
   pitch: number;
   /** Announce when item is added to cart */
   announceItemAdd: boolean;
+  /** Announce "Thank you" after bill */
+  announceThankYou: boolean;
+  /** Short mode (only announce amount, not full sentence) */
+  shortMode: boolean;
   /** Selected browser voice URI (null = auto-pick best Malayalam voice) */
   selectedVoiceURI: string | null;
 
@@ -35,6 +39,8 @@ export interface VoiceSettings {
   setRate: (v: number) => void;
   setPitch: (v: number) => void;
   setAnnounceItemAdd: (v: boolean) => void;
+  setAnnounceThankYou: (v: boolean) => void;
+  setShortMode: (v: boolean) => void;
   setSelectedVoiceURI: (v: string | null) => void;
 }
 
@@ -48,6 +54,8 @@ export const useVoiceSettings = create<VoiceSettings>()(
       rate:             0.95,
       pitch:            0.95,
       announceItemAdd:  false,
+      announceThankYou: true,
+      shortMode:        false,
       selectedVoiceURI: null,
 
       setVoiceEnabled:    (v) => set({ voiceEnabled: v }),
@@ -57,6 +65,8 @@ export const useVoiceSettings = create<VoiceSettings>()(
       setRate:            (v) => set({ rate: Math.max(0.5, Math.min(1.5, v)) }),
       setPitch:           (v) => set({ pitch: Math.max(0, Math.min(2, v)) }),
       setAnnounceItemAdd: (v) => set({ announceItemAdd: v }),
+      setAnnounceThankYou:(v) => set({ announceThankYou: v }),
+      setShortMode:       (v) => set({ shortMode: v }),
       setSelectedVoiceURI:(v) => set({ selectedVoiceURI: v }),
     }),
     {
@@ -90,6 +100,8 @@ export function useRegisterVoiceSettings() {
       voiceURI:     settings.selectedVoiceURI,
       googleApiKey: settings.googleApiKey,
       ttsProvider:  settings.ttsProvider,
+      announceThankYou: settings.announceThankYou,
+      shortMode:    settings.shortMode,
     }));
   }, [settings]);
 }

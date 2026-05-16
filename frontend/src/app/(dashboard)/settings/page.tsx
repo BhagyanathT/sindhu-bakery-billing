@@ -8,6 +8,7 @@ import api from '@/lib/api';
 import { clsx } from 'clsx';
 import { useVoiceSettings, getVoiceOpts, type TTSProvider } from '@/hooks/useVoiceSettings';
 import { testPhrase, getAvailableVoices, stopSpeech, announceTotalAmount, announcePaymentReceived, announceChange, announceThankYou, announceBillGenerated, onApiKeyChange } from '@/lib/malayalamVoice';
+import { Switch } from '@/components/ui/switch';
 
 const TABS = [
   { id: 'company',    label: 'Company',    icon: Building2 },
@@ -514,6 +515,35 @@ export default function SettingsPage() {
 
                 {/* Master toggle + provider picker */}
                 <div className="card p-6 space-y-5">
+                  {/* Repair Audio Button (Diagnostic) */}
+                  <button 
+                    onClick={async () => {
+                      const toastId = toast.loading('Repairing Audio...');
+                      try {
+                        stopSpeech();
+                        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+                        await ctx.resume();
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        gain.gain.value = 0.1;
+                        osc.frequency.value = 440;
+                        osc.start();
+                        setTimeout(() => {
+                          osc.stop();
+                          ctx.close();
+                          toast.success('Audio repaired! Did you hear the beep?', { id: toastId });
+                        }, 500);
+                      } catch (e) {
+                        toast.error('Repair failed', { id: toastId });
+                      }
+                    }}
+                    className="w-full py-2 rounded-xl bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-[10px] font-black uppercase tracking-widest hover:bg-red-100 transition-all flex items-center justify-center gap-2 mb-2"
+                  >
+                    <AlertTriangle className="w-3 h-3" /> Repair Audio
+                  </button>
+
                   {/* Enable toggle */}
                   <div className="flex items-center justify-between">
                     <div>
@@ -529,6 +559,45 @@ export default function SettingsPage() {
                     >
                       <div className={clsx('absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all', voice.voiceEnabled ? 'left-7' : 'left-1')} />
                     </button>
+                  </div>
+
+                  {/* Announce Thank You Toggle */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-stone-700 dark:text-stone-300">Announce Thank You</p>
+                      <p className="text-[10px] text-stone-500">Say "Nanniundee, veendum varika" after each bill.</p>
+                    </div>
+                    <Switch
+                      checked={voice.announceThankYou}
+                      onCheckedChange={voice.setAnnounceThankYou}
+                      className="data-[state=checked]:bg-violet-600"
+                    />
+                  </div>
+
+                  {/* Short Mode Toggle */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-stone-700 dark:text-stone-300">Short Mode</p>
+                      <p className="text-[10px] text-stone-500">Only announce the amount (e.g., "500 Rupa"). Skip "Aake thuka...".</p>
+                    </div>
+                    <Switch
+                      checked={voice.shortMode}
+                      onCheckedChange={voice.setShortMode}
+                      className="data-[state=checked]:bg-violet-600"
+                    />
+                  </div>
+
+                  {/* Announce on Item Add */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-stone-700 dark:text-stone-300">Announce Item Add</p>
+                      <p className="text-[10px] text-stone-500">Speak product name when added to cart.</p>
+                    </div>
+                    <Switch
+                      checked={voice.announceItemAdd}
+                      onCheckedChange={voice.setAnnounceItemAdd}
+                      className="data-[state=checked]:bg-violet-600"
+                    />
                   </div>
 
                   {/* TTS Provider */}
@@ -636,6 +705,18 @@ export default function SettingsPage() {
                       </div>
                     </div>
                   )}
+                </div>
+
+                {/* Explicit Save Button for user confidence */}
+                <div className="flex justify-end pt-2 pb-6">
+                  <button
+                    onClick={() => {
+                      toast.success('Voice settings saved successfully!', { id: 'voice-save' });
+                    }}
+                    className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-bold text-sm shadow-lg shadow-violet-500/20 transition-all active:scale-95"
+                  >
+                    <Save className="w-4 h-4" /> Save Voice Settings
+                  </button>
                 </div>
 
                 {/* Google WaveNet API key card */}

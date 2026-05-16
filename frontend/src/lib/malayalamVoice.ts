@@ -220,6 +220,10 @@ export interface VoiceOptions {
   rate?: number;
   pitch?: number;
   voiceURI?: string | null;
+  /** Announce "Thank you" after bill */
+  announceThankYou?: boolean;
+  /** Short mode (only announce amount, not full sentence) */
+  shortMode?: boolean;
 }
 
 interface SpeechJob {
@@ -270,23 +274,30 @@ if (typeof window !== 'undefined') {
 function pickBrowserVoice(voiceURI?: string | null): SpeechSynthesisVoice | null {
   const voices = window.speechSynthesis.getVoices();
   if (!voices.length) return null;
+  
   if (voiceURI) {
     const v = voices.find(v => v.voiceURI === voiceURI);
     if (v) return v;
   }
-  // Prefer ml-IN voices (native Malayalam)
-  return (
-    voices.find(v => v.lang === 'ml-IN') ||
+  
+  // Broad Malayalam matching
+  const mlMatch = (
+    voices.find(v => v.lang === 'ml-IN' || v.lang === 'ml_IN') ||
     voices.find(v => v.lang.startsWith('ml')) ||
-    null
+    voices.find(v => v.name.toLowerCase().includes('malayalam')) ||
+    voices.find(v => v.name.toLowerCase().includes('neerja'))
   );
+  
+  if (mlMatch) return mlMatch;
+  
+  // If no Malayalam voice is found, return null. 
+  // This will force the engine to use our Proxy (Google Voice) instead.
+  return null;
 }
 
 function speakWithBrowser(job: SpeechJob): Promise<void> {
   return new Promise((resolve) => {
     const synth = window.speechSynthesis;
-
-    // Cancel any stuck speech first
     synth.cancel();
 
     const cleanText = job.text.replace(/<[^>]+>/g, '').trim();
@@ -355,40 +366,6 @@ function speakWithBrowser(job: SpeechJob): Promise<void> {
   });
 }
 
-// ─── Provider: Google Translate Free TTS (Direct Audio Tag) ───────────────────
-
-function speakWithGoogleTranslateFree(job: SpeechJob): Promise<void> {
-  return new Promise((resolve) => {
-    let resolved = false;
-    const safeResolve = () => { if (!resolved) { resolved = true; resolve(); } };
-
-    try {
-      const cleanText = job.text.replace(/<[^>]+>/g, '').trim();
-      if (!cleanText) return safeResolve();
-
-      // Using client=tw-ob allows direct playback via Audio tag without CORS/403
-      const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText)}&tl=ml&client=tw-ob`;
-
-      const audio = new Audio(url);
-      audio.volume = Math.max(0, Math.min(1, job.opts.volume ?? 1));
-
-      audio.oncanplaythrough = () => { audio.play().catch(safeResolve); };
-      audio.onended  = safeResolve;
-      audio.onerror  = () => {
-        console.warn('[Voice] Direct Google TTS failed, falling back to browser TTS');
-        speakWithBrowser(job).then(safeResolve);
-      };
-
-      audio.load();
-
-      // Safety timeout 10s
-      setTimeout(safeResolve, 10000);
-    } catch {
-      safeResolve();
-    }
-  });
-}
-
 // ─── Provider: Google Cloud WaveNet ──────────────────────────────────────────
 
 async function speakWithGoogle(job: SpeechJob, googleOpts: GoogleTTSOptions): Promise<boolean> {
@@ -446,9 +423,17 @@ async function processQueue() {
   }
 
   if (!usedGoogle) {
-    // Direct Google Translate TTS (bypasses CORS via Audio tag)
-    notifyListeners({ text: job.text, provider: 'browser' });
-    await speakWithGoogleTranslateFree(job);
+    // Attempt 1: Native Browser TTS (Best for privacy/offline)
+    const browserVoice = pickBrowserVoice();
+    if (browserVoice) {
+      notifyListeners({ text: job.text, provider: 'browser' });
+      await speakWithBrowser(job);
+    } else {
+      // Attempt 2: Direct Google Translate TTS (Best for quality when system voice is missing)
+      // This uses the 'tw-ob' client which bypasses typical blocks
+      notifyListeners({ text: job.text, provider: 'browser' });
+      await speakWithGoogleTranslateFree(job);
+    }
   }
 
   notifyListeners({ text: null, provider: null });
@@ -459,16 +444,86 @@ async function processQueue() {
   setTimeout(processQueue, 200);
 }
 
+// ─── Provider: Google Translate Free TTS (Direct Audio Tag) ───────────────────
+
+function speakWithGoogleTranslateFree(job: SpeechJob): Promise<void> {
+  return new Promise((resolve) => {
+    let resolved = false;
+    const safeResolve = () => { if (!resolved) { resolved = true; resolve(); } };
+
+    try {
+      const cleanText = job.text.replace(/<[^>]+>/g, '').trim();
+      if (!cleanText) return safeResolve();
+
+      const proxyUrl = `/api/proxy-tts?text=${encodeURIComponent(cleanText)}&lang=ml`;
+      console.log('[Voice] Proxy TTS Fetch:', cleanText);
+      
+      // Use the reliable singleton AudioContext from googleCloudTTS
+      resumeAudioContext().then(() => {
+        // We use the same context that played the beep or WaveNet
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        
+        fetch(proxyUrl)
+          .then(res => {
+            if (!res.ok) throw new Error(`Proxy error: ${res.status}`);
+            return res.arrayBuffer();
+          })
+          .then(arrayBuffer => {
+            // Support both Promise and Callback styles of decodeAudioData
+            return new Promise<AudioBuffer>((resDecode, rejDecode) => {
+              ctx.decodeAudioData(arrayBuffer, resDecode, rejDecode);
+            });
+          })
+          .then(audioBuffer => {
+            const source = ctx.createBufferSource();
+            source.buffer = audioBuffer;
+            
+            // Apply speed (playbackRate)
+            source.playbackRate.value = Math.max(0.5, Math.min(2.0, job.opts.rate ?? 1.0));
+
+            const gainNode = ctx.createGain();
+            gainNode.gain.value = Math.max(0, Math.min(1.5, job.opts.volume ?? 1));
+            source.connect(gainNode);
+            gainNode.connect(ctx.destination);
+            source.start(0);
+            source.onended = () => {
+              ctx.close().catch(() => {});
+              safeResolve();
+            };
+          })
+          .catch(err => {
+            console.error('[Voice] Proxy Playback Failed:', err);
+            ctx.close().catch(() => {});
+            speakWithBrowser(job).then(safeResolve);
+          });
+      });
+
+      setTimeout(safeResolve, 15000);
+    } catch (e) {
+      console.error('[Voice] Proxy TTS Exception:', e);
+      safeResolve();
+    }
+  });
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export function speak(text: string, opts: VoiceOptions = {}, pauseBefore = 0) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
   if (!text.trim()) return;
 
+  const settings = _getSettings?.();
+  const mergedOpts: VoiceOptions = {
+    volume:   opts.volume   ?? settings?.volume ?? 1,
+    rate:     opts.rate     ?? settings?.rate   ?? 0.88,
+    pitch:    opts.pitch    ?? settings?.pitch  ?? 1.1,
+    voiceURI: opts.voiceURI ?? settings?.voiceURI ?? null,
+  };
+
   if (window.speechSynthesis.paused) window.speechSynthesis.resume();
   if (queue.length >= 12) return;
 
-  queue.push({ text, opts, pauseBefore });
+  queue.push({ text, opts: mergedOpts, pauseBefore });
   processQueue();
 }
 
@@ -513,12 +568,12 @@ export function announceTotalAmount(amount: number, opts: VoiceOptions = {}) {
   speak(`ആകെ ${words} രൂപയാകും.`, opts);
 }
 
-/** Kerala style: "ക്യാഷ് [amount] രൂപ കിട്ടി" */
+/** Kerala style: "ക്യാഷ് [amount] രൂപ" */
 export function announcePaymentReceived(method: string, amount: number, opts: VoiceOptions = {}) {
   const methodWord = PAYMENT_MALAYALAM[method.toLowerCase()] || method;
   const words = amountToMalayalam(amount, true);
   const via = (method.toLowerCase() === 'cash') ? '' : ' വഴി';
-  speak(`${methodWord}${via}, ${words} രൂപ കിട്ടി.`, opts, 120);
+  speak(`${methodWord}${via} ${words} രൂപ`, opts, 120);
 }
 
 /** "യൂ പി ഐ സക്സസ്" */
@@ -534,15 +589,22 @@ export function announceChange(amount: number, opts: VoiceOptions = {}) {
 }
 
 /** "കൊടുക്കാൻ ബാക്കി [amount] രൂപ" */
-export function announcePendingAmount(amount: number, opts: VoiceOptions = {}) {
+export function announceBalance(amount: number, opts: VoiceOptions = {}) {
   if (amount <= 0) return;
-  const words = amountToMalayalam(amount, true);
-  speak(`കൊടുക്കാൻ ബാക്കി ${words} രൂപയുണ്ട്.`, opts, 120);
+  const settings = _getSettings?.();
+  const isShort = opts.shortMode ?? settings?.shortMode ?? false;
+
+  const words = amountToMalayalam(amount);
+  if (isShort) {
+    speak(`${words} രൂപ ബാക്കി`, opts, 120);
+  } else {
+    speak(`കൊടുക്കാൻ ബാക്കി ${words} രൂപയുണ്ട്.`, opts, 120);
+  }
 }
 
-/** "നന്ദി, വീണ്ടും വരൂ" */
+/** "നന്ദി ഉണ്ടേ വീണ്ടും വരൂ" */
 export function announceThankYou(opts: VoiceOptions = {}) {
-  speak('നന്ദി, വീണ്ടും വരൂ.', opts, 250);
+  speak('നന്ദി ഉണ്ടേ വീണ്ടും വരിക', opts, 250);
 }
 
 /** "[productName] ചേർത്തു" */
@@ -554,23 +616,39 @@ export function announceItemAdded(productName: string, opts: VoiceOptions = {}) 
  * Full bill announcement:
  * Bill ready → Total → Payment → Change → Thank you
  */
-export function announceFullBill(params: {
-  amount: number;
-  paymentMethod: string;
-  change?: number;
-  opts?: VoiceOptions;
-}) {
-  const { amount, paymentMethod, change = 0, opts = {} } = params;
-  announceBillGenerated(opts);
-  announceTotalAmount(amount, opts);
+export function announceBillSummary(
+  total: number,
+  method: string,
+  paid: number,
+  opts: VoiceOptions = {}
+) {
+  const settings = _getSettings?.();
+  const isShort = opts.shortMode ?? settings?.shortMode ?? false;
+  const shouldAnnounceThanks = opts.announceThankYou ?? settings?.announceThankYou ?? true;
 
-  if (paymentMethod.toLowerCase() === 'upi') {
-    announceUPISuccess(opts);
+  const totalWords = amountToMalayalam(total);
+  
+  if (isShort) {
+    // Ultra short: just the amount
+    speak(`${totalWords} രൂപ`, opts);
+  } else {
+    // Normal: Total amount + Payment method
+    speak(`ആകെ തുക ${totalWords} രൂപ.`, opts);
+    
+    if (method.toLowerCase() === 'upi' && shouldAnnounceThanks) {
+      announceUPISuccess(opts);
+    }
+    
+    announcePaymentReceived(method, total, opts);
   }
-  announcePaymentReceived(paymentMethod, amount, opts);
 
-  if (change > 0) announceChange(change, opts);
-  announceThankYou(opts);
+  if (paid > total) {
+    announceBalance(paid - total, { ...opts, shortMode: isShort });
+  }
+
+  if (shouldAnnounceThanks) {
+    announceThankYou(opts);
+  }
 }
 
 /**
@@ -582,10 +660,18 @@ export function announceFlashBill(params: {
   opts?: VoiceOptions;
 }) {
   const { amount, paymentMethod, opts = {} } = params;
+  const settings = _getSettings?.();
+  const shouldAnnounceThanks = opts.announceThankYou ?? settings?.announceThankYou ?? true;
 
   if (paymentMethod.toLowerCase() === 'upi') {
-    announceUPISuccess(opts);
+    // Only say "Success" if Thank You is enabled, otherwise just the amount
+    if (shouldAnnounceThanks) {
+      announceUPISuccess(opts);
+    }
   }
   announcePaymentReceived(paymentMethod, amount, opts);
-  announceThankYou(opts);
+  
+  if (shouldAnnounceThanks) {
+    announceThankYou(opts);
+  }
 }
