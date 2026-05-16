@@ -343,9 +343,12 @@ export default function BillingPage() {
       if (e.key === 'F10') { e.preventDefault(); if (cart.length > 0) handleSave(); }
       
       // Enter key -> Save Only (no print)
-      if (e.key === 'Enter' && cart.length > 0 && document.activeElement?.id !== 'product-search') {
-        e.preventDefault();
-        handleSaveOnly();
+      if (e.key === 'Enter' && cart.length > 0) {
+        const isSearchFocused = document.activeElement?.id === 'product-search';
+        if (!isSearchFocused || !search.trim()) {
+          e.preventDefault();
+          handleSaveOnly();
+        }
       }
 
       if (e.key === 'Escape') setSearch('');
@@ -353,7 +356,7 @@ export default function BillingPage() {
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
     // eslint-disable-next-line
-  }, [cart, tabId]);
+  }, [cart, tabId, search]);
 
   // Focus search on tab switch
   useEffect(() => {
