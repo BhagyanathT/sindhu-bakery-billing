@@ -30,7 +30,7 @@ interface QuickBill {
 
 const PAY_METHODS: { id: PayMethod; label: string; icon: React.ElementType }[] = [
   { id: 'cash', label: 'Cash', icon: Banknote },
-  { id: 'upi',  label: 'UPI',  icon: Smartphone },
+  { id: 'upi',  label: 'UPI (G)',  icon: Smartphone },
   { id: 'card', label: 'Card', icon: CreditCard },
 ];
 
@@ -82,18 +82,23 @@ export default function FlashBillingPage() {
   // ── Fetch ──────────────────────────────────────────────────────────────
   const fetchRecent = async () => {
     try {
-      // 1. Fetch recent quick bills for the list
-      const resRecent = await api.get('/invoices?limit=15&type=sale&billingMode=quick');
-      setRecentBills(resRecent.data.data?.invoices || []);
-
-      // 2. Fetch all quick bills for today for accurate total
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-      const resToday = await api.get(`/invoices?limit=1000&type=sale&billingMode=quick&startDate=${todayStart.toISOString()}`);
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
       
-      const tq = resToday.data.data?.invoices || [];
-      setTodayCount(resToday.data.data?.total || tq.length);
-      setTodayTotal(tq.reduce((s: number, i: any) => s + (i.grandTotal || 0), 0));
+      // 1. Fetch recent quick bills for the list
+      const resRecent = await api.get(`/invoices?limit=15&type=sale&billingMode=quick&startDate=${today}`);
+      const recent = (resRecent.data.data?.invoices || []).map((inv: any) => ({
+        ...inv,
+        paymentMethod: inv.payments?.[0]?.method || 'cash'
+      }));
+      setRecentBills(recent);
+
+      // 2. Fetch today's flash billing summary stats
+      const resStats = await api.get(`/invoices/period-stats?type=sale&billingMode=quick&startDate=${today}&endDate=${today}`);
+      if (resStats.data?.success) {
+        const d = resStats.data.data;
+        setTodayCount(d.totalOrders || 0);
+        setTodayTotal(d.totalAmount || 0);
+      }
     } catch (error) {
       console.error('Failed to fetch flash bills:', error);
     }
@@ -182,11 +187,12 @@ export default function FlashBillingPage() {
   const displayValue = current === '' ? (prev !== null ? prev.toString() : '0') : current;
 
   // ── Save ───────────────────────────────────────────────────────────────
-  const save = useCallback(async () => {
+  const save = useCallback(async (methodOverride?: PayMethod) => {
     if (isSavingRef.current) return;
     const total = Math.round(finalAmount * 100) / 100;
     if (!total || total <= 0) { toast.error('Enter a valid amount!'); return; }
     
+    const method = methodOverride || payMethod;
     let finalNote = note.trim();
     let finalCalc = calcString;
     if (op && current !== '' && prev !== null) {
@@ -199,26 +205,24 @@ export default function FlashBillingPage() {
     isSavingRef.current = true;
     setSaving(true);
     try {
-      const res = await api.post('/invoices/quick', { total, note: finalNote, paymentMethod: payMethod });
+      const res = await api.post('/invoices/quick', { total, note: finalNote, paymentMethod: method });
       toast.success(`✅ ₹${total.toLocaleString('en-IN')} saved!`, { icon: '⚡' });
-      pressClear(); setNote(''); fetchRecent();
+      pressClear(); 
+      setNote(''); 
+      fetchRecent();
 
-      // 🔊 Malayalam voice announcement
+      // 🔊 Malayalam voice announcement (fire-and-forget)
       if (voiceSettings.voiceEnabled) {
-        announceFlashBill({ amount: total, paymentMethod: payMethod, opts: getVoiceOpts(voiceSettings) });
+        announceFlashBill({ amount: total, paymentMethod: method, opts: getVoiceOpts(voiceSettings) });
       }
-      
-      // Auto-print removed as requested by user
-      // if (res.data?.success && res.data.data?.invoice) {
-      //   handlePrint(res.data.data.invoice);
-      // }
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Failed to save.');
+      console.error('[FlashSave] Error:', err?.response?.data || err);
+      toast.error(err?.response?.data?.message || 'Failed to save. Please check amount.');
     } finally { 
       isSavingRef.current = false;
       setSaving(false); 
     }
-  }, [finalAmount, note, payMethod, pressClear, calcString, op, current, prev]);
+  }, [finalAmount, note, payMethod, pressClear, calcString, op, current, prev, voiceSettings.voiceEnabled, voiceSettings.volume, voiceSettings.rate, voiceSettings.pitch, voiceSettings.selectedVoiceURI]);
 
   const handlePrint = (bill: QuickBill) => {
     setPrintTarget(bill);
@@ -259,6 +263,7 @@ export default function FlashBillingPage() {
       else if (e.key === 'Enter') save();
       else if (e.key === 'Backspace') pressBack();
       else if (e.key === 'Escape') pressClear();
+      else if (e.key.toLowerCase() === 'g') save('upi');
       else handled = false;
 
       // Prevent default browser behavior (like clicking focused buttons) for handled keys
@@ -364,7 +369,7 @@ export default function FlashBillingPage() {
 
       {/* Save */}
       <div className="px-3 pb-4">
-        <button onClick={save} disabled={!hasAmount || saving}
+        <button onClick={() => save()} disabled={!hasAmount || saving}
           className={clsx('w-full py-4 rounded-2xl text-white text-base font-bold transition-all active:scale-[0.98] flex items-center justify-center gap-2',
             hasAmount && !saving
               ? 'bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 shadow-xl shadow-emerald-500/30'
@@ -533,7 +538,7 @@ export default function FlashBillingPage() {
         <button onClick={() => setMobileTab('history')}
           className={clsx('flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold transition-all',
             mobileTab === 'history' ? 'bg-amber-600 text-white' : 'text-stone-500 hover:bg-stone-200 dark:hover:bg-stone-800')}>
-          <List className="w-3.5 h-3.5" /> History ({recentBills.length})
+          <List className="w-3.5 h-3.5" /> History ({todayCount})
         </button>
       </div>
 

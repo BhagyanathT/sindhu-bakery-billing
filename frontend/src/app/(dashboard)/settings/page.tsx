@@ -56,7 +56,8 @@ export default function SettingsPage() {
   };
 
   const testGoogleVoice = async () => {
-    if (!voice.googleApiKey) { toast.error('Enter and save your Google API key first'); return; }
+    const keyToTest = googleKeyDraft.trim() || voice.googleApiKey;
+    if (!keyToTest) { toast.error('Enter your Google API key first'); return; }
     setTestingGoogle(true);
     const toastId = toast.loading('Testing Google WaveNet voice...');
     try {
@@ -64,7 +65,7 @@ export default function SettingsPage() {
       voice.setTtsProvider('google');
       
       // We call the API directly here for a diagnostic test
-      const res = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${voice.googleApiKey}`, {
+      const res = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${keyToTest}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

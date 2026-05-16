@@ -11,8 +11,8 @@ import api from '@/lib/api';
 import { clsx } from 'clsx';
 import { useAuthStore } from '@/store/authStore';
 
-const TODAY = new Date().toISOString().split('T')[0];
-const MONTH_START = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-01`;
+const TODAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+const MONTH_START = `${TODAY.split('-')[0]}-${TODAY.split('-')[1]}-01`;
 
 const QUICK_FILTERS = [
   { label: 'Today', start: TODAY, end: TODAY },

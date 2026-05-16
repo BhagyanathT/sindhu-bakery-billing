@@ -10,6 +10,7 @@ import {
   synthesizeWithGoogle,
   playBase64Audio,
   clearAudioCache,
+  resumeAudioContext,
   type GoogleTTSOptions,
 } from './googleCloudTTS';
 
@@ -99,12 +100,16 @@ function applyMalayalamSlang(text: string): string {
   res = res.replace(/ആയിരത്തി എ/g, 'ആയിരത്തെ');
   res = res.replace(/ആയിരത്തി ഒ/g, 'ആയിരത്തൊ');
 
-  // Lakhs
-  res = res.replace(/ലക്ഷത്തി അ/g, 'ലക്ഷത്ത');
-  res = res.replace(/ലക്ഷത്തി എ/g, 'ലക്ഷത്തെ');
-  res = res.replace(/ലക്ഷത്തി ഒ/g, 'ലക്ഷത്തൊ');
+  // Currency joining (Natural flow)
+  res = res.replace(/രൂപ ആ/g, 'രൂപയാ');
+  res = res.replace(/രൂപ ഉ/g, 'രൂപയു');
+  res = res.replace(/രൂപ എ/g, 'രൂപയെ');
+  res = res.replace(/രൂപ ഒ/g, 'രൂപയൊ');
+  
+  // Clean up double spaces
+  res = res.replace(/\s\s+/g, ' ');
 
-  return res;
+  return res.trim();
 }
 
 function getThousandsWord(k: number): string {
@@ -252,7 +257,9 @@ function unlockAudioContext() {
 
 // Register on first user interaction
 if (typeof window !== 'undefined') {
-  const unlock = () => { unlockAudioContext(); };
+  const unlock = () => { 
+    resumeAudioContext(); 
+  };
   ['click', 'touchstart', 'keydown', 'pointerdown'].forEach(e =>
     window.addEventListener(e, unlock, { once: false, passive: true })
   );
@@ -390,7 +397,8 @@ async function speakWithGoogle(job: SpeechJob, googleOpts: GoogleTTSOptions): Pr
     if (!b64) return false;
     await playBase64Audio(b64, job.opts.volume ?? 1);
     return true;
-  } catch {
+  } catch (e) {
+    console.error('[Voice] Google TTS Error:', e);
     return false;
   }
 }
@@ -428,8 +436,9 @@ async function processQueue() {
     const googleOpts: GoogleTTSOptions = {
       apiKey,
       voiceName: 'ml-IN-Wavenet-A',
-      speakingRate: job.opts.rate ?? 1.0,
-      pitch:        job.opts.pitch ?? -1.0,
+      speakingRate: (job.opts.rate ?? 1.0) * 1.08, // Boost rate slightly for 'fluency'
+      // Map 0.5-1.5 UI pitch to -6 to +6 semitones for Google (1.0 -> -1.0)
+      pitch:        ((job.opts.pitch ?? 1.0) - 1.0) * 12 - 1.0, 
       volumeGainDb: 10.0,
     };
     notifyListeners({ text: job.text, provider: 'google' });
@@ -498,17 +507,18 @@ export function announceBillGenerated(opts: VoiceOptions = {}) {
   speak('ബിൽ റെഡി ആയിട്ടുണ്ട്.', opts);
 }
 
-/** "ആകെ [amount] രൂപ ആകും" */
+/** "ആകെ [amount] രൂപയാകും" */
 export function announceTotalAmount(amount: number, opts: VoiceOptions = {}) {
   const words = amountToMalayalam(amount, true);
-  speak(`ആകെ ${words} രൂപാകും.`, opts);
+  speak(`ആകെ ${words} രൂപയാകും.`, opts);
 }
 
 /** Kerala style: "ക്യാഷ് [amount] രൂപ കിട്ടി" */
 export function announcePaymentReceived(method: string, amount: number, opts: VoiceOptions = {}) {
   const methodWord = PAYMENT_MALAYALAM[method.toLowerCase()] || method;
   const words = amountToMalayalam(amount, true);
-  speak(`${methodWord}, ${words} രൂപ കിട്ടി.`, opts, 120);
+  const via = (method.toLowerCase() === 'cash') ? '' : ' വഴി';
+  speak(`${methodWord}${via}, ${words} രൂപ കിട്ടി.`, opts, 120);
 }
 
 /** "യൂ പി ഐ സക്സസ്" */

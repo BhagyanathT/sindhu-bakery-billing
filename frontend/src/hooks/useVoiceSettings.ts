@@ -42,11 +42,11 @@ export const useVoiceSettings = create<VoiceSettings>()(
   persist(
     (set) => ({
       voiceEnabled:     true,
-      ttsProvider:      'browser',
-      googleApiKey:     '',
+      ttsProvider:      'google',
+      googleApiKey:     process.env.NEXT_PUBLIC_GOOGLE_TTS_KEY || '',
       volume:           1,
-      rate:             0.82,
-      pitch:            1.0,
+      rate:             0.95,
+      pitch:            0.95,
       announceItemAdd:  false,
       selectedVoiceURI: null,
 
@@ -60,7 +60,7 @@ export const useVoiceSettings = create<VoiceSettings>()(
       setSelectedVoiceURI:(v) => set({ selectedVoiceURI: v }),
     }),
     {
-      name: 'sindhu-voice-settings-v2',
+      name: 'sindhu-voice-settings-v3', // Incremented version to force-apply new fluency defaults
       partialize: (s) => ({
         voiceEnabled:     s.voiceEnabled,
         ttsProvider:      s.ttsProvider,

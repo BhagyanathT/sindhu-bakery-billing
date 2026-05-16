@@ -206,21 +206,16 @@ exports.getInvoices = async (req, res, next) => {
     if (customerId) query.customer = customerId;
     if (billingMode) query.billingMode = billingMode;
     if (startDate || endDate) {
-      query.date = {};
+      const dateFilter = {};
       if (startDate) {
-        // Start of day in IST (IST = UTC+5:30, so subtract 5h30m from midnight IST to get UTC)
-        const s = new Date(startDate);
-        s.setHours(0, 0, 0, 0);
-        s.setMinutes(s.getMinutes() - 330); // subtract 330 min to go from IST midnight to UTC
-        query.date.$gte = s;
+        const s = new Date(`${startDate.split('T')[0]}T00:00:00+05:30`);
+        if (!isNaN(s.getTime())) dateFilter.$gte = s;
       }
       if (endDate) {
-        // End of day in IST (23:59:59 IST = 18:29:59 UTC next day offset)
-        const e = new Date(endDate);
-        e.setHours(23, 59, 59, 999);
-        e.setMinutes(e.getMinutes() - 330);
-        query.date.$lte = e;
+        const e = new Date(`${endDate.split('T')[0]}T23:59:59+05:30`);
+        if (!isNaN(e.getTime())) dateFilter.$lte = e;
       }
+      query.date = dateFilter;
     }
     if (search) {
       query.$or = [
@@ -547,25 +542,22 @@ exports.getSalesChart = async (req, res, next) => {
 // ── Period Stats (for Orders page filter summary) ─────────────────────────────
 exports.getPeriodStats = async (req, res, next) => {
   try {
-    const { startDate, endDate, paymentMethod } = req.query;
+    const { startDate, endDate, paymentMethod, billingMode, type = 'sale' } = req.query;
     const company = new mongoose.Types.ObjectId(req.company._id);
     const dateFilter = {};
     if (startDate) {
-      const s = new Date(startDate);
-      s.setHours(0, 0, 0, 0);
-      s.setMinutes(s.getMinutes() - 330);
-      dateFilter.$gte = s;
+      const s = new Date(`${startDate.split('T')[0]}T00:00:00+05:30`);
+      if (!isNaN(s.getTime())) dateFilter.$gte = s;
     }
     if (endDate) {
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
-      end.setMinutes(end.getMinutes() - 330);
-      dateFilter.$lte = end;
+      const e = new Date(`${endDate.split('T')[0]}T23:59:59+05:30`);
+      if (!isNaN(e.getTime())) dateFilter.$lte = e;
     }
 
-    const matchQuery = { company, type: 'sale' };
+    const matchQuery = { company, type };
     if (startDate || endDate) matchQuery.date = dateFilter;
     if (paymentMethod) matchQuery['payments.method'] = paymentMethod.toLowerCase();
+    if (billingMode) matchQuery.billingMode = billingMode;
 
     const [stats, paymentBreakdown] = await Promise.all([
       Invoice.aggregate([

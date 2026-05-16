@@ -142,6 +142,7 @@ export function VoiceMuteButton() {
     <button
       id="voice-mute-btn"
       onClick={() => {
+        import('@/lib/googleCloudTTS').then(m => m.resumeAudioContext());
         if (voiceEnabled && speaking) stopSpeech();
         setVoiceEnabled(!voiceEnabled);
       }}

@@ -88,6 +88,15 @@ export async function synthesizeWithGoogle(
   }
 }
 
+let _audioCtx: AudioContext | null = null;
+
+function getAudioContext(): AudioContext {
+  if (!_audioCtx) {
+    _audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  }
+  return _audioCtx;
+}
+
 /**
  * Play a base64 MP3 string through the browser's AudioContext.
  * Returns a Promise that resolves when playback ends.
@@ -98,11 +107,10 @@ export async function playBase64Audio(
 ): Promise<void> {
   return new Promise((resolve) => {
     try {
+      const ctx = getAudioContext();
       const binary = atob(b64);
       const bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
 
       const playAudio = () => {
         ctx.decodeAudioData(bytes.buffer, (buffer) => {
@@ -116,24 +124,22 @@ export async function playBase64Audio(
           gain.connect(ctx.destination);
           source.start(0);
           source.onended = () => {
-            ctx.close().catch(() => {});
             resolve();
           };
           // Safety timeout
-          setTimeout(() => { ctx.close().catch(() => {}); resolve(); }, 15000);
+          setTimeout(resolve, 15000);
         }, () => {
-          ctx.close().catch(() => {});
           resolve();
         });
       };
 
-      // Resume suspended AudioContext (happens when no user gesture yet)
       if (ctx.state === 'suspended') {
         ctx.resume().then(playAudio).catch(() => resolve());
       } else {
         playAudio();
       }
-    } catch {
+    } catch (e) {
+      console.warn('[Audio] Playback failed:', e);
       resolve();
     }
   });
@@ -142,4 +148,12 @@ export async function playBase64Audio(
 /** Clear the audio cache (e.g., when voice settings change) */
 export function clearAudioCache() {
   audioCache.clear();
+}
+
+/** Resume the singleton AudioContext to unlock playback */
+export async function resumeAudioContext() {
+  const ctx = getAudioContext();
+  if (ctx.state === 'suspended') {
+    await ctx.resume().catch(() => {});
+  }
 }
