@@ -465,48 +465,41 @@ function speakWithGoogleTranslateFree(job: SpeechJob): Promise<void> {
       const cleanText = job.text.replace(/<[^>]+>/g, '').trim();
       if (!cleanText) return safeResolve();
 
-      const proxyUrl = `/api/proxy-tts?text=${encodeURIComponent(cleanText)}&lang=ml`;
-      console.log('[Voice] Proxy TTS Fetch:', cleanText);
+      // Directly use the user's local connection to fetch Google TTS, bypassing AWS Server IP block
+      const directUrl = `https://translate.googleapis.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText)}&tl=ml&client=gtx`;
+      console.log('[Voice] Direct Google TTS Playback:', cleanText);
       
-      const ctx = getAudioContext();
+      // Use the global audio element that was unlocked during user interaction to bypass Safari autoplay block
+      const audio = _globalFallbackAudio || new Audio();
+      audio.src = directUrl;
+      audio.volume = Math.max(0, Math.min(1.0, job.opts.volume ?? 1));
+      audio.playbackRate = Math.max(0.5, Math.min(2.0, job.opts.rate ?? 1.0));
       
-      fetch(proxyUrl)
-        .then(res => {
-          if (!res.ok) throw new Error(`Proxy error: ${res.status}`);
-          return res.arrayBuffer();
-        })
-        .then(arrayBuffer => {
-          return new Promise<AudioBuffer>((resDecode, rejDecode) => {
-            ctx.decodeAudioData(arrayBuffer, resDecode, rejDecode);
-          });
-        })
-        .then(audioBuffer => {
-          const source = ctx.createBufferSource();
-          source.buffer = audioBuffer;
-          
-          source.playbackRate.value = Math.max(0.5, Math.min(2.0, job.opts.rate ?? 1.0));
+      const onEnd = () => {
+        audio.removeEventListener('ended', onEnd);
+        audio.removeEventListener('error', onError);
+        safeResolve();
+      };
+      const onError = (err: any) => {
+        audio.removeEventListener('ended', onEnd);
+        audio.removeEventListener('error', onError);
+        console.error('[Voice] Direct Playback Error:', err);
+        speakWithBrowser(job).then(safeResolve);
+      };
 
-          const gainNode = ctx.createGain();
-          gainNode.gain.value = Math.max(0, Math.min(1.5, job.opts.volume ?? 1));
-          source.connect(gainNode);
-          gainNode.connect(ctx.destination);
-          
-          source.onended = safeResolve;
-          
-          if (ctx.state === 'suspended') {
-            ctx.resume().then(() => source.start(0)).catch(safeResolve);
-          } else {
-            source.start(0);
-          }
-        })
-        .catch(err => {
-          console.error('[Voice] Proxy Playback Failed:', err);
-          speakWithBrowser(job).then(safeResolve);
-        });
+      audio.addEventListener('ended', onEnd);
+      audio.addEventListener('error', onError);
+
+      audio.play().catch(err => {
+        audio.removeEventListener('ended', onEnd);
+        audio.removeEventListener('error', onError);
+        console.error('[Voice] Direct Playback Blocked:', err);
+        speakWithBrowser(job).then(safeResolve);
+      });
 
       setTimeout(safeResolve, 15000);
     } catch (e) {
-      console.error('[Voice] Proxy TTS Exception:', e);
+      console.error('[Voice] Direct TTS Exception:', e);
       safeResolve();
     }
   });
