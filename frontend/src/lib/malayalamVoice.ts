@@ -466,7 +466,8 @@ function speakWithGoogleTranslateFree(job: SpeechJob): Promise<void> {
       if (!cleanText) return safeResolve();
 
       // Attempt 1: Use the Next.js Proxy (which uses client=gtx to bypass AWS IP blocks)
-      const proxyUrl = `/api/proxy-tts?text=${encodeURIComponent(cleanText)}&lang=ml`;
+      // We use /tts-proxy instead of /api/proxy-tts to avoid Nginx backend routing rules
+      const proxyUrl = `/tts-proxy?text=${encodeURIComponent(cleanText)}&lang=ml`;
       console.log('[Voice] Proxy TTS Fetch:', cleanText);
       
       const ctx = getAudioContext();
