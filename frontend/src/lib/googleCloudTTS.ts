@@ -90,10 +90,18 @@ export async function synthesizeWithGoogle(
 
 let _audioCtx: AudioContext | null = null;
 
-function getAudioContext(): AudioContext {
+export function getAudioContext(): AudioContext {
   if (!_audioCtx) {
     _audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
   }
+  return _audioCtx;
+}
+
+export function repairGlobalAudioContext(): AudioContext {
+  if (_audioCtx && _audioCtx.state !== 'closed') {
+    _audioCtx.close().catch(() => {});
+  }
+  _audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
   return _audioCtx;
 }
 

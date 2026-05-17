@@ -36,7 +36,7 @@ const navItems: NavItem[] = [
   { label: 'Reports',         href: '/reports',      icon: BarChart3,       emoji: '📈',  adminOnly: true },
   { label: 'WhatsApp',        href: '/whatsapp',     icon: MessageCircle,   emoji: '💬',  badge: 'NEW', adminOnly: true },
   { label: 'User Mgmt',       href: '/admin-users',  icon: UserCog,         emoji: '👥',  badge: 'ADMIN', adminOnly: true },
-  { label: 'Settings',        href: '/settings',     icon: Settings,        emoji: '⚙️',  adminOnly: true },
+  { label: 'Settings',        href: '/settings',     icon: Settings,        emoji: '⚙️' },
 ];
 
 interface SidebarProps {

@@ -11,6 +11,7 @@ import {
   playBase64Audio,
   clearAudioCache,
   resumeAudioContext,
+  getAudioContext,
   type GoogleTTSOptions,
 } from './googleCloudTTS';
 
@@ -245,6 +246,9 @@ function clearWatchdog() {
 
 let _audioCtxUnlocked = false;
 
+// Global audio element for proxy/fallback playback to bypass mobile Safari autoplay restrictions
+export const _globalFallbackAudio = typeof window !== 'undefined' ? new Audio() : null;
+
 function unlockAudioContext() {
   if (_audioCtxUnlocked) return;
   _audioCtxUnlocked = true;
@@ -256,6 +260,12 @@ function unlockAudioContext() {
     src.connect(ctx.destination);
     src.start(0);
     setTimeout(() => ctx.close().catch(() => {}), 100);
+    
+    // Unlock the global fallback audio element
+    if (_globalFallbackAudio) {
+      _globalFallbackAudio.volume = 0;
+      _globalFallbackAudio.play().catch(() => {});
+    }
   } catch { /* ignore */ }
 }
 
@@ -458,45 +468,41 @@ function speakWithGoogleTranslateFree(job: SpeechJob): Promise<void> {
       const proxyUrl = `/api/proxy-tts?text=${encodeURIComponent(cleanText)}&lang=ml`;
       console.log('[Voice] Proxy TTS Fetch:', cleanText);
       
-      // Use the reliable singleton AudioContext from googleCloudTTS
-      resumeAudioContext().then(() => {
-        // We use the same context that played the beep or WaveNet
-        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        
-        fetch(proxyUrl)
-          .then(res => {
-            if (!res.ok) throw new Error(`Proxy error: ${res.status}`);
-            return res.arrayBuffer();
-          })
-          .then(arrayBuffer => {
-            // Support both Promise and Callback styles of decodeAudioData
-            return new Promise<AudioBuffer>((resDecode, rejDecode) => {
-              ctx.decodeAudioData(arrayBuffer, resDecode, rejDecode);
-            });
-          })
-          .then(audioBuffer => {
-            const source = ctx.createBufferSource();
-            source.buffer = audioBuffer;
-            
-            // Apply speed (playbackRate)
-            source.playbackRate.value = Math.max(0.5, Math.min(2.0, job.opts.rate ?? 1.0));
-
-            const gainNode = ctx.createGain();
-            gainNode.gain.value = Math.max(0, Math.min(1.5, job.opts.volume ?? 1));
-            source.connect(gainNode);
-            gainNode.connect(ctx.destination);
-            source.start(0);
-            source.onended = () => {
-              ctx.close().catch(() => {});
-              safeResolve();
-            };
-          })
-          .catch(err => {
-            console.error('[Voice] Proxy Playback Failed:', err);
-            ctx.close().catch(() => {});
-            speakWithBrowser(job).then(safeResolve);
+      const ctx = getAudioContext();
+      
+      fetch(proxyUrl)
+        .then(res => {
+          if (!res.ok) throw new Error(`Proxy error: ${res.status}`);
+          return res.arrayBuffer();
+        })
+        .then(arrayBuffer => {
+          return new Promise<AudioBuffer>((resDecode, rejDecode) => {
+            ctx.decodeAudioData(arrayBuffer, resDecode, rejDecode);
           });
-      });
+        })
+        .then(audioBuffer => {
+          const source = ctx.createBufferSource();
+          source.buffer = audioBuffer;
+          
+          source.playbackRate.value = Math.max(0.5, Math.min(2.0, job.opts.rate ?? 1.0));
+
+          const gainNode = ctx.createGain();
+          gainNode.gain.value = Math.max(0, Math.min(1.5, job.opts.volume ?? 1));
+          source.connect(gainNode);
+          gainNode.connect(ctx.destination);
+          
+          source.onended = safeResolve;
+          
+          if (ctx.state === 'suspended') {
+            ctx.resume().then(() => source.start(0)).catch(safeResolve);
+          } else {
+            source.start(0);
+          }
+        })
+        .catch(err => {
+          console.error('[Voice] Proxy Playback Failed:', err);
+          speakWithBrowser(job).then(safeResolve);
+        });
 
       setTimeout(safeResolve, 15000);
     } catch (e) {

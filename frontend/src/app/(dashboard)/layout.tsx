@@ -18,7 +18,6 @@ const ADMIN_ONLY_PATHS = [
   '/staff',
   '/attendance',
   '/salary',
-  '/settings',
   '/whatsapp',
   '/admin-users',
 ];

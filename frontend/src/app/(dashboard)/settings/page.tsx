@@ -10,14 +10,14 @@ import { useVoiceSettings, getVoiceOpts, type TTSProvider } from '@/hooks/useVoi
 import { testPhrase, getAvailableVoices, stopSpeech, announceTotalAmount, announcePaymentReceived, announceChange, announceThankYou, announceBillGenerated, onApiKeyChange } from '@/lib/malayalamVoice';
 import { Switch } from '@/components/ui/switch';
 
-const TABS = [
-  { id: 'company',    label: 'Company',    icon: Building2 },
-  { id: 'billing',   label: 'Billing',    icon: CreditCard },
-  { id: 'appearance',label: 'Appearance', icon: Palette },
-  { id: 'security',  label: 'Security',   icon: Shield },
-  { id: 'users',     label: 'Users',      icon: Users },
-  { id: 'voice',     label: 'Voice',      icon: Volume2 },
-  { id: 'data',      label: 'Data',       icon: Database },
+const ALL_TABS = [
+  { id: 'company',    label: 'Company',    icon: Building2, adminOnly: true },
+  { id: 'billing',   label: 'Billing',    icon: CreditCard, adminOnly: true },
+  { id: 'appearance',label: 'Appearance', icon: Palette, adminOnly: false },
+  { id: 'security',  label: 'Security',   icon: Shield, adminOnly: false },
+  { id: 'users',     label: 'Users',      icon: Users, adminOnly: true },
+  { id: 'voice',     label: 'Voice',      icon: Volume2, adminOnly: false },
+  { id: 'data',      label: 'Data',       icon: Database, adminOnly: true },
 ];
 
 const WIPE_ITEMS = [
@@ -27,14 +27,17 @@ const WIPE_ITEMS = [
   { key: 'attendance', label: 'All Attendance',        icon: Calendar,      color: 'orange', desc: 'Clears all attendance check-in/out and admin-marked records.' },
   { key: 'leaves',     label: 'All Leave Records',     icon: ClipboardList, color: 'orange', desc: 'Removes all leave applications and approvals.' },
   { key: 'salaries',   label: 'All Salary Records',    icon: Wallet,        color: 'orange', desc: 'Deletes all generated salary and payroll data.' },
-  { key: 'all',        label: 'âš ï¸ WIPE ALL DATA',       icon: AlertTriangle, color: 'red',    desc: 'Nuclear option â€” deletes ALL records. Products & Staff are kept.' },
+  { key: 'all',        label: '⚠️ WIPE ALL DATA',       icon: AlertTriangle, color: 'red',    desc: 'Nuclear option — deletes ALL records. Products & Staff are kept.' },
 ];
 
 export default function SettingsPage() {
   const { user, logout } = useAuthStore();
   const { theme, setTheme } = useTheme();
+  
+  const isAdmin = user?.role === 'admin';
+  const TABS = ALL_TABS.filter(t => isAdmin || !t.adminOnly);
 
-  // â”€â”€ Voice settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Voice settings ──────────────────────────────────────────────────────────
   const voice = useVoiceSettings();
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [showApiKey, setShowApiKey] = useState(false);
@@ -99,7 +102,7 @@ export default function SettingsPage() {
     } finally { setTestingGoogle(false); }
   };
 
-  const [activeTab, setActiveTab] = useState('company');
+  const [activeTab, setActiveTab] = useState(isAdmin ? 'company' : 'voice');
   const [wiping, setWiping]       = useState<string|null>(null);
 
   // Confirm modal state
@@ -521,18 +524,23 @@ export default function SettingsPage() {
                       const toastId = toast.loading('Repairing Audio...');
                       try {
                         stopSpeech();
-                        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+                        
+                        // Import dynamically to avoid circular issues, or we can use window if exported
+                        const { repairGlobalAudioContext } = await import('@/lib/googleCloudTTS');
+                        
+                        // Synchronously unlock the browser's global AudioContext
+                        const ctx = repairGlobalAudioContext();
                         await ctx.resume();
+                        
                         const osc = ctx.createOscillator();
                         const gain = ctx.createGain();
                         osc.connect(gain);
                         gain.connect(ctx.destination);
-                        gain.gain.value = 0.1;
+                        gain.gain.value = 0.5; // Louder beep
                         osc.frequency.value = 440;
                         osc.start();
                         setTimeout(() => {
                           osc.stop();
-                          ctx.close();
                           toast.success('Audio repaired! Did you hear the beep?', { id: toastId });
                         }, 500);
                       } catch (e) {
